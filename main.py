@@ -110,7 +110,6 @@ def apply_chart_style(fig, title, x_title, y_label):
     
     return fig
 
-
 def render_card(fig):
     st.plotly_chart(fig, width="stretch", config={'displayModeBar': False})
 
@@ -119,6 +118,35 @@ def render_card(fig):
 # main.py - inside create_forbes_chart
 
 # ... (Previous code for importing matplotlib and the function definition)
+
+def create_tissue_chart(dataframe):
+    df = dataframe.copy()
+
+    # Tissue Chart
+    fig_tissue = go.Figure()
+    x_col = "Month" if plot_unit == "Months" else "Week"
+    fig_tissue.add_trace(go.Scatter(x=df[x_col], y=df["LeanMass"], mode='lines', name="Muscle", line=dict(color="#ff4040", width=2),hovertemplate='Lean Mass: %{y:.1f} kg<extra></extra>'))
+    fig_tissue.add_trace(go.Scatter(x=df[x_col], y=df["FatMass"], mode='lines', name="Fat", line=dict(color="#3399FF", width=2, dash='dash'),hovertemplate='Fat Mass: %{y:.1f} kg<extra></extra>'))
+    
+    # Tissue backgrounds
+    df['phase_change'] = df['Phase'] != df['Phase'].shift(1)
+    change_indices = df.index[df['phase_change']].tolist()
+    if 0 not in change_indices: change_indices.insert(0, 0)
+    change_indices.append(len(df))
+    shapes = []
+    for i in range(len(change_indices) - 1):
+        start, end = change_indices[i], change_indices[i+1]
+        x0 = df[x_col].iloc[start]
+        x1 = df[x_col].iloc[end-1] if end < len(df) else df[x_col].iloc[-1]
+        phase = df['Phase'].iloc[start]
+        if phase == 'Bulk': color = "rgba(46, 204, 113, 0.06)"
+        elif phase == 'Cut': color = "rgba(231, 76, 60, 0.06)"
+        else: color = "rgba(139, 0, 0, 0.2)"
+        shapes.append(dict(type="rect", xref="x", yref="paper", x0=x0, x1=x1, y0=0, y1=1, fillcolor=color, line=dict(width=0), layer="below"))
+    
+    fig_tissue.update_layout(shapes=shapes)
+
+    return apply_chart_style(fig_tissue, "Tissue Composition", x_col, "Mass (kg)")
 
 def create_forbes_chart(dataframe):
     fig = go.Figure()
@@ -410,30 +438,6 @@ with c_left:
 
 with c_right:
     render_card(create_combined_chart(df, plot_unit, goal_weight, goal_bf))
-    
-    # Tissue Chart
-    fig_tissue = go.Figure()
-    x_col = "Month" if plot_unit == "Months" else "Week"
-    fig_tissue.add_trace(go.Scatter(x=df[x_col], y=df["LeanMass"], mode='lines', name="Muscle", line=dict(color="#ff4040", width=2)))
-    fig_tissue.add_trace(go.Scatter(x=df[x_col], y=df["FatMass"], mode='lines', name="Fat", line=dict(color="#3399FF", width=2, dash='dash')))
-    
-    # Tissue backgrounds
-    df['phase_change'] = df['Phase'] != df['Phase'].shift(1)
-    change_indices = df.index[df['phase_change']].tolist()
-    if 0 not in change_indices: change_indices.insert(0, 0)
-    change_indices.append(len(df))
-    shapes = []
-    for i in range(len(change_indices) - 1):
-        start, end = change_indices[i], change_indices[i+1]
-        x0 = df[x_col].iloc[start]
-        x1 = df[x_col].iloc[end-1] if end < len(df) else df[x_col].iloc[-1]
-        phase = df['Phase'].iloc[start]
-        if phase == 'Bulk': color = "rgba(46, 204, 113, 0.06)"
-        elif phase == 'Cut': color = "rgba(231, 76, 60, 0.06)"
-        else: color = "rgba(139, 0, 0, 0.2)"
-        shapes.append(dict(type="rect", xref="x", yref="paper", x0=x0, x1=x1, y0=0, y1=1, fillcolor=color, line=dict(width=0), layer="below"))
-    
-    fig_tissue.update_layout(shapes=shapes)
-    render_card(apply_chart_style(fig_tissue, "Tissue Composition", plot_unit, "Mass (kg)"))
 
     render_card(create_forbes_chart(df))
+    render_card(create_tissue_chart(df))
