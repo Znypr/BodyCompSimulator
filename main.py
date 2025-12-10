@@ -5,29 +5,8 @@ import logic
 
 st.set_page_config(page_title="Body Comp Simulator", layout="wide")
 
-# --- Custom CSS ---
-st.markdown("""
-    <style>
-        .stApp { background-color: #1e1e1e; }
-
-        [data-testid="stSidebar"] { min-width: 350px; max-width: 350px; }
-        [data-testid="stSidebar"] > div:first-child { padding-top: 0rem; }
-        
-        .block-container { padding-top: 1rem; padding-bottom: 2rem; }
-        
-        div[data-testid="stVerticalBlock"] > div { gap: 0.3rem !important; }
-        h1, h2, h3 { margin-top: 0rem !important; margin-bottom: 0.2rem !important; }
-        hr { margin-top: 0.5rem !important; margin-bottom: 0.5rem !important; }
-        .stNumberInput, .stSlider, .stRadio { padding-bottom: 0rem !important; }
-        
-        /* CARD STYLING FOR CHARTS */
-        /* Targets the Plotly container to give it the rounded card look */
-        .js-plotly-plot .plotly, .js-plotly-plot .plot-container {
-            border-radius: 16px !important; /* Rounded borders */
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); /* Subtle shadow for depth */
-        }
-    </style>
-""", unsafe_allow_html=True)
+with open('style.css') as f:
+    st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
 # --- Sidebar ---
 st.sidebar.title("Configuration")
@@ -35,29 +14,29 @@ st.sidebar.title("Configuration")
 # 1. Stats & Goals
 st.sidebar.subheader("Current & Goals")
 c1, c2 = st.sidebar.columns(2)
-start_weight = c1.number_input("Weight (kg)", value=80.0, step=0.1, format="%.1f")
+start_weight = c1.number_input("Weight (kg)", value=79.0, step=0.1, format="%.1f")
 start_bf = c2.number_input("Body Fat %", value=18.0, step=0.1, format="%.1f")
 
 c3, c4 = st.sidebar.columns(2)
-goal_weight = c3.number_input("Goal Wgt", value=85.0, step=0.5, format="%.1f")
-goal_bf = c4.number_input("Goal BF%", value=14.0, step=0.5, format="%.1f")
+goal_weight = c3.number_input("Goal Weight", value=85.0, step=0.5, format="%.1f")
+goal_bf = c4.number_input("Goal BF%", value=10.0, step=0.5, format="%.1f")
 
 # 2. Protocol
 st.sidebar.markdown("---")
 st.sidebar.subheader("Protocol")
 
 r1_c1, r1_c2 = st.sidebar.columns(2)
-mode = r1_c1.radio("Start", ["Bulk", "Cut"], index=1, horizontal=True)
-first_label = "First Bulk Wks" if mode == "Bulk" else "First Cut Wks"
+mode = r1_c1.radio("Start", ["Cut", "Bulk"], index=0, horizontal=True)
+first_label = "First Bulk Weeks" if mode == "Bulk" else "First Cut Weeks"
 first_phase_weeks = r1_c2.number_input(first_label, 1, 52, 6)
 
 r2_c1, r2_c2 = st.sidebar.columns(2)
-bulk_weeks = r2_c1.number_input("Std. Bulk Wks", 1, 52, 14)
-cut_weeks = r2_c2.number_input("Std. Cut Wks", 1, 52, 8)
+bulk_weeks = r2_c1.number_input("Bulk Weeks", 1, 52, 6)
+cut_weeks = r2_c2.number_input("Cut Weeks", 1, 52, 2)
 
 r3_c1, r3_c2 = st.sidebar.columns(2)
-surplus = r3_c1.number_input("Bulk Surplus", 0, 1500, 300)
-deficit = r3_c2.number_input("Cut Deficit", 0, 1500, 300)
+surplus = r3_c1.number_input("Bulk Surplus", 0, 1500, 300, step=25)
+deficit = r3_c2.number_input("Cut Deficit", 0, 1500, 500, step=25)
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Physiology")
@@ -67,10 +46,18 @@ scale_coeff = st.sidebar.number_input("Cycle Scale Multiplier", 0.8, 2.0, 1.0, 0
 
 st.sidebar.markdown("---")
 r4_c1, r4_c2 = st.sidebar.columns([2, 1])
-view_months = r4_c1.slider("Timeline (Months)", 1, 60, 24)
-plot_unit = r4_c2.radio("Units", ["Weeks", "Months"], horizontal=True)
 
-view_weeks_calc = view_months * 4.345 
+plot_unit = r4_c2.radio("Units", ["Months", "Weeks"], horizontal=True)
+
+if plot_unit == "Months":
+    view_val = r4_c1.slider("Timeline (Months)", 1, 60, 24)
+    view_weeks_calc = view_val * 4.345
+else:
+    view_val = r4_c1.slider("Timeline (Weeks)", 4, 260, 104)
+    view_weeks_calc = view_val
+
+view_months = int(view_weeks_calc / 4.345) 
+
 fatigue_decimal = fatigue_pct / 100.0
 
 # --- Logic ---
@@ -86,29 +73,83 @@ df["Month"] = df["Week"] / 4.345
 # --- REUSABLE WIDGETS ---
 
 def apply_chart_style(fig, title, x_title, y_label):
-    """Applies the visual theme: Dark card background, large text, padding"""
     fig.update_layout(
-        # BIGGER TITLE (20px)
-        title=dict(text=f"<b>{title}</b>", font=dict(size=20, color="#e0e0e0"), x=0.05),
+        title=dict(text=f"<b>{title}</b>", font=dict(size=20), x=0.05),
         xaxis_title=x_title, 
         yaxis_title=y_label,
-        template="plotly_dark",
-        # Dark Card Background
-        paper_bgcolor="#262626", 
-        plot_bgcolor="#262626",
-        # MORE PADDING (Margins)
+        
+        # --- THE CRITICAL FIX ---
+        # 1. Remove any template="plotly_white" line if you see it elsewhere.
+        # 2. Force these to be transparent so the CSS color shows through.
+        paper_bgcolor='rgba(0,0,0,0)', 
+        plot_bgcolor='rgba(0,0,0,0)',
+        
+        # ------------------------
+        
         margin=dict(l=50, r=30, t=60, b=50), 
         height=320, 
         hovermode="x unified",
         legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center")
     )
+    
+    # Grid lines (Semi-transparent gray works on both White and Black backgrounds)
+    grid_color = 'rgba(128, 128, 128, 0.2)'
+    fig.update_xaxes(showgrid=True, gridcolor=grid_color, zeroline=False)
+    fig.update_yaxes(showgrid=True, gridcolor=grid_color, zeroline=False)
+    
     return fig
 
+
 def render_card(fig):
-    """Reusable widget to render a chart card consistently"""
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig, width="stretch", config={'displayModeBar': False})
 
 # --- Chart Creators ---
+
+def create_forbes_chart(dataframe):
+    fig = go.Figure()
+    
+    # 1. Theoretical Forbes Curve
+    bf_range = np.arange(5, 26, 1) 
+    p_values = []
+    
+    for bf in bf_range:
+        p = logic.get_canonical_p_ratio(bf) * 100 
+        p_values.append(p)
+
+    # Use a neutral gray for the line so it works in both modes
+    fig.add_trace(go.Scatter(
+        x=bf_range, 
+        y=p_values,
+        mode='lines',
+        name='Forbes Curve',
+        line=dict(color='#888888', width=3, dash='dot')
+    ))
+
+    # 2. Start & End Markers
+    start_row = dataframe.iloc[0]
+    end_row = dataframe.iloc[-1]
+
+    fig.add_trace(go.Scatter(
+        x=[start_row["BodyFat"]], y=[start_row["PRatio"] * 100],
+        mode='markers+text', name='Start', text=["Start"], textposition="top right",
+        marker=dict(color='#3399FF', size=12, line=dict(color='white', width=1))
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=[end_row["BodyFat"]], y=[end_row["PRatio"] * 100],
+        mode='markers+text', name='End', text=["End"], textposition="top right",
+        marker=dict(color='#2ecc71', size=12, line=dict(color='white', width=1))
+    ))
+
+    # 3. Apply Unified Style (Transparent)
+    fig = apply_chart_style(fig, "P-Ratio Efficiency Graph", "Body Fat %", "Muscle Partitioning (%)")
+    
+    # Specific Axis Overrides for Forbes limits
+    fig.update_layout(
+        xaxis=dict(range=[5, 25], dtick=5),
+        yaxis=dict(range=[20, 80], dtick=10)
+    )
+    return fig
 
 def create_time_chart(dataframe, y_col, color_line, title, y_label, x_unit_mode, goal_val=None):
     fig = go.Figure()
@@ -247,3 +288,5 @@ with c_right:
     
     fig_tissue.update_layout(shapes=shapes)
     render_card(apply_chart_style(fig_tissue, "Tissue Composition", plot_unit, "Mass (kg)"))
+
+    render_card(create_forbes_chart(df))
