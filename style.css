@@ -1,0 +1,59 @@
+/* --- GLOBAL SPACING --- */
+.block-container {
+    padding-top: 3rem !important;
+    padding-bottom: 2rem;
+}
+
+/* ============================================================
+   1. CHART CARDS 
+   ============================================================ */
+[data-testid="stPlotlyChart"] {
+    background-color: var(--sidebar-background-color) !important;
+    border: 1px solid rgba(128, 128, 128, 0.2);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    border-radius: 8px;
+}
+
+
+
+/* ============================================================
+   2. INPUT BOXES (White Box / Gray Border)
+   ============================================================ */
+/* Target the input container specifically */
+[data-testid="stSidebar"] div[data-baseweb="input"] {
+    background-color: #ffffff !important;
+    
+    /* MATCHES THE GRAY DIVIDER LINE (Darker than before) */
+    border: 1px solid #d6d6d6 !important; 
+    border-radius: 4px !important;
+}
+
+/* Force Text to be Black */
+[data-testid="stSidebar"] input {
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+    caret-color: #000000 !important;
+}
+
+/* Buttons (+/-) */
+[data-testid="stSidebar"] button {
+    color: #333333 !important;
+    background: transparent !important;
+    border: none !important;
+}
+
+/* Remove Blue Glow */
+[data-testid="stSidebar"] div[data-baseweb="input"]:focus-within {
+    border-color: #a0a0a0 !important;
+    box-shadow: none !important;
+}
+
+/* ============================================================
+   3. TEXT FIXES
+   ============================================================ */
+/* Metrics adapt automatically (Black in Light Mode, White in Dark Mode) */
+[data-testid="stMetricLabel"] {
+    color: var(--text-color) !important;
+    opacity: 0.7;
+}
+
