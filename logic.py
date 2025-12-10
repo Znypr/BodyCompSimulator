@@ -10,7 +10,6 @@ def get_canonical_p_ratio(bf_percent):
     Formula: LBM = 10.4 * ln(F) + 14.2
     """
     # 1. Safety Clamp: Forbes equation breaks near 0% BF. 
-    # We return a theoretical max p-ratio (~90-95%) if BF is super low.
     if bf_percent <= 1.0: 
         return 0.95
         
@@ -19,18 +18,37 @@ def get_canonical_p_ratio(bf_percent):
     # Equation: F / (F + 10.4*ln(F) + 14.2) - target = 0
     # We restrict F (Fat Mass) to be positive to avoid log(negative) errors
     def func(f):
-        if f <= 0.1: return 1.0 # Force error if solver goes too low
+        # A low f value will cause log errors; clamp f to a small positive number
+        if f < 0.1: return 1.0 
         return (f / (f + 10.4 * np.log(f) + 14.2)) - target
     
+    # Determine a smarter initial guess:
+    # Use 15kg for high BF, and a lower guess for low BF% to help convergence.
+    initial_guess = 15.0
+    if bf_percent < 15.0:
+        initial_guess = 5.0 # Lower guess for leaner individuals
+    
     try:
-        # Initial guess 15kg is standard for average humans
-        f_sol = fsolve(func, 15)[0]
-        if f_sol <= 0: return 0.95 
+        f_sol = fsolve(func, initial_guess, maxfev=1000)[0] # Increase max iterations
         
+        # If solver returns a non-physical value, apply the high-efficiency clamp
+        if f_sol <= 0.1: 
+            return 0.95 
+        
+        # Calculate FFM Proportion of Delta BW: dFFM/dBW = 10.4 / (10.4 + F)
         p_ratio = 10.4 / (10.4 + f_sol)
         return p_ratio
-    except:
-        return 0.0
+    except ValueError:
+        # Handle cases where log(negative) occurs due to solver wandering
+        return 0.95 # Assume max efficiency for extreme leanness
+    except RuntimeError:
+        # Handle non-convergence (The solver did not find a root)
+        # This is the most likely cause of the "break"
+        if bf_percent < 15.0: 
+            return 0.95 # Assume max efficiency
+        else:
+            # For non-lean states, return a value that keeps the curve smooth
+            return 10.4 / (10.4 + 20.0) # Approx 34% FFM proportion for extreme failure
 
 def calculate_projection(
     start_weight: float,

@@ -2,8 +2,16 @@ import streamlit as st
 import plotly.graph_objects as go
 import numpy as np
 import logic
+from matplotlib import cm
 
 st.set_page_config(page_title="Body Comp Simulator", layout="wide")
+
+if 'theme_id' not in st.session_state:
+    st.session_state.theme_id = st.get_option("theme.base")
+
+if st.get_option("theme.base") != st.session_state.theme_id:
+    st.session_state.theme_id = st.get_option("theme.base")
+    st.rerun()
 
 with open('style.css') as f:
     st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
@@ -72,19 +80,22 @@ df["Month"] = df["Week"] / 4.345
 
 # --- REUSABLE WIDGETS ---
 
+
 def apply_chart_style(fig, title, x_title, y_label):
+    current_theme = st.get_option("theme.base")
+    plotly_template = "plotly_dark" if current_theme == "dark" else "plotly_white"
+    
     fig.update_layout(
         title=dict(text=f"<b>{title}</b>", font=dict(size=20), x=0.05),
         xaxis_title=x_title, 
         yaxis_title=y_label,
         
-        # --- THE CRITICAL FIX ---
-        # 1. Remove any template="plotly_white" line if you see it elsewhere.
-        # 2. Force these to be transparent so the CSS color shows through.
+        # 1. Use the Theme Template (fixes text colors)
+        template=plotly_template, 
+        
+        # 2. But force backgrounds to be transparent so CSS color shows through
         paper_bgcolor='rgba(0,0,0,0)', 
         plot_bgcolor='rgba(0,0,0,0)',
-        
-        # ------------------------
         
         margin=dict(l=50, r=30, t=60, b=50), 
         height=320, 
@@ -92,7 +103,7 @@ def apply_chart_style(fig, title, x_title, y_label):
         legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center")
     )
     
-    # Grid lines (Semi-transparent gray works on both White and Black backgrounds)
+    # Grid lines (Need to override the theme's grid color for stability)
     grid_color = 'rgba(128, 128, 128, 0.2)'
     fig.update_xaxes(showgrid=True, gridcolor=grid_color, zeroline=False)
     fig.update_yaxes(showgrid=True, gridcolor=grid_color, zeroline=False)
@@ -105,50 +116,89 @@ def render_card(fig):
 
 # --- Chart Creators ---
 
+# main.py - inside create_forbes_chart
+
+# ... (Previous code for importing matplotlib and the function definition)
+
 def create_forbes_chart(dataframe):
     fig = go.Figure()
     
-    # 1. Theoretical Forbes Curve
-    bf_range = np.arange(5, 26, 1) 
+    # 1. Theoretical Forbes Curve Calculation
+    bf_range = np.arange(8.0, 30.1, 0.1) 
     p_values = []
     
     for bf in bf_range:
         p = logic.get_canonical_p_ratio(bf) * 100 
         p_values.append(p)
 
-    # Use a neutral gray for the line so it works in both modes
+    # 2. Implement Gradient Rectangles
+    # ... (code for shapes and gradient remains the same as in the last approved step)
+    shapes = []
+    num_zones = 50 
+    zone_size = (bf_range.max() - bf_range.min()) / num_zones
+    bf_colors = cm.get_cmap('RdYlGn_r') 
+
+    for i in range(num_zones):
+        x0 = bf_range.min() + i * zone_size
+        x1 = x0 + zone_size
+        mid_bf = (x0 + x1) / 2
+        
+        normalized_bf = (mid_bf - bf_range.min()) / (bf_range.max() - bf_range.min())
+        
+        r, g, b, _ = bf_colors(normalized_bf)
+        rgba_color = f"rgba({int(r*255)}, {int(g*255)}, {int(b*255)}, 0.15)" 
+
+        shapes.append(dict(
+            type="rect", xref="x", yref="paper", 
+            x0=x0, x1=x1, y0=0, y1=1, 
+            fillcolor=rgba_color, line=dict(width=0), layer="below"
+        ))
+    
+    fig.update_layout(shapes=shapes)
+
+    # 3. Forbes Curve
     fig.add_trace(go.Scatter(
         x=bf_range, 
         y=p_values,
         mode='lines',
         name='Forbes Curve',
-        line=dict(color='#888888', width=3, dash='dot')
+        line=dict(color='#888888', width=3, dash='dash'),
+        hovertemplate='P-Ratio: %{y:.1f}%<extra></extra>' 
     ))
-
-    # 2. Start & End Markers
+    
+    # 4. Start & End Markers
     start_row = dataframe.iloc[0]
     end_row = dataframe.iloc[-1]
 
+    start_p_ratio = logic.get_canonical_p_ratio(start_row["BodyFat"]) * 100
+    end_p_ratio = logic.get_canonical_p_ratio(end_row["BodyFat"]) * 100
+    
     fig.add_trace(go.Scatter(
-        x=[start_row["BodyFat"]], y=[start_row["PRatio"] * 100],
+        x=[start_row["BodyFat"]], y=[start_p_ratio], 
         mode='markers+text', name='Start', text=["Start"], textposition="top right",
-        marker=dict(color='#3399FF', size=12, line=dict(color='white', width=1))
+        marker=dict(color='#3399FF', size=12, line=dict(color='white', width=1)),
+        hovertemplate='Start P-Ratio: %{y:.1f}%<extra></extra>'
     ))
     
     fig.add_trace(go.Scatter(
-        x=[end_row["BodyFat"]], y=[end_row["PRatio"] * 100],
+        x=[end_row["BodyFat"]], y=[end_p_ratio], 
         mode='markers+text', name='End', text=["End"], textposition="top right",
-        marker=dict(color='#2ecc71', size=12, line=dict(color='white', width=1))
+        marker=dict(color='#2ecc71', size=12, line=dict(color='white', width=1)),
+        hovertemplate='End P-Ratio: %{y:.1f}%<extra></extra>'
     ))
 
-    # 3. Apply Unified Style (Transparent)
+    # 5. Apply Unified Style and Legend (FIXED TITLES AND LABELS)
+    # Restore original title and Y-axis label
     fig = apply_chart_style(fig, "P-Ratio Efficiency Graph", "Body Fat %", "Muscle Partitioning (%)")
     
-    # Specific Axis Overrides for Forbes limits
+    # Specific Axis Overrides
     fig.update_layout(
-        xaxis=dict(range=[5, 25], dtick=5),
-        yaxis=dict(range=[20, 80], dtick=10)
+        xaxis=dict(range=[8, 30], dtick=3), 
+        yaxis=dict(range=[40, 85], dtick=10), 
+        margin=dict(l=50, r=30, t=60, b=50), 
     )
+    
+    
     return fig
 
 def create_time_chart(dataframe, y_col, color_line, title, y_label, x_unit_mode, goal_val=None):
@@ -156,14 +206,50 @@ def create_time_chart(dataframe, y_col, color_line, title, y_label, x_unit_mode,
     x_col = "Month" if x_unit_mode == "Months" else "Week"
     x_title = x_unit_mode
 
+
     fig.add_trace(go.Scatter(
         x=dataframe[x_col], y=dataframe[y_col], 
-        mode='lines', name=title, line=dict(color=color_line, width=3)
+        mode='lines', name=title, line=dict(color=color_line, width=3),
+        hovertemplate =f'{y_label}: %{{y:.1f}}<extra></extra>'
     ))
     
-    if goal_val:
-        fig.add_hline(y=goal_val, line_dash="dash", line_color="white", opacity=0.5, annotation_text="Goal")
+    # --- GOAL VISIBILITY FIX: Theme-Aware Annotation ---
+    if goal_val is not None:
+        
+        # Theme Logic (REQUIRED for bg_color)
+        current_theme = st.get_option("theme.base")
+        if current_theme == "dark":
+            bg_color = "rgba(40, 42, 54, 0.8)" 
+            text_color = "#ffffff"              
+        else:
+            bg_color = "#ffffff"
+            text_color = "#000000"
+            
+        fig.add_hline(y=goal_val, line_dash="dash", line_color=color_line, opacity=0.8)
 
+        # User's corrected annotation logic applied
+        fig.add_annotation(
+            x=dataframe[x_col].iloc[-1],
+            y=goal_val,
+            text="Goal",
+            showarrow=False,
+            font=dict(
+                size=10,
+                color=text_color
+            ),
+            bgcolor=bg_color, # NOW DEFINED BY THEME LOGIC
+            bordercolor=color_line,
+            opacity=0.75, 
+            xanchor="right",
+            yanchor="middle",
+            borderpad=5,
+            borderwidth=1,
+            captureevents=False,
+            hoverlabel=dict(bgcolor='rgba(0,0,0,0)', bordercolor='rgba(0,0,0,0)'),
+        )
+    # --- END GOAL VISIBILITY FIX ---
+
+    df = dataframe.copy()
     df['phase_change'] = df['Phase'] != df['Phase'].shift(1)
     change_indices = df.index[df['phase_change']].tolist()
     if 0 not in change_indices: change_indices.insert(0, 0)
@@ -190,21 +276,78 @@ def create_combined_chart(dataframe, x_unit_mode, g_weight=None, g_bf=None):
     x_col = "Month" if x_unit_mode == "Months" else "Week"
     x_title = x_unit_mode
 
+    # Theme Logic (REQUIRED for bg_color)
+    current_theme = st.get_option("theme.base")
+    if current_theme == "dark":
+        bg_color = "rgba(40, 42, 54, 0.8)"
+        text_color = "#ffffff"
+    else:
+        bg_color = "#ffffff"
+        text_color = "#000000"
+
+    # Weight Trace (Orange)
+    weight_color = "#FFA500"
     fig.add_trace(go.Scatter(
         x=dataframe[x_col], y=dataframe["Weight"],
-        name="Weight (kg)", mode='lines', line=dict(color="#FFA500", width=3)
+        name="Weight (kg)", mode='lines', line=dict(color=weight_color, width=3),
+        hovertemplate='Weight: %{y:.1f} kg<extra></extra>'
     ))
-    if g_weight:
-        fig.add_hline(y=g_weight, line_dash="dash", line_color="#FFA500", opacity=0.6)
-
+    
+    # Body Fat Trace (Blue)
+    bf_color = "#3399FF"
     fig.add_trace(go.Scatter(
         x=dataframe[x_col], y=dataframe["BodyFat"],
-        name="Body Fat %", mode='lines', line=dict(color="#3399FF", width=3, dash='dot'), yaxis="y2"
+        name="Body Fat %", mode='lines', line=dict(color=bf_color, width=3, dash='dot'), yaxis="y2",
+        hovertemplate='Body Fat %: %{y:.1f}%<extra></extra>'
     ))
-    if g_bf:
-        fig.add_shape(type="line", xref="paper", yref="y2", x0=0, x1=1, y0=g_bf, y1=g_bf, line=dict(color="#3399FF", dash="dash", width=1), opacity=0.6)
 
-    # Backgrounds
+    # --- GOAL VISIBILITY FIXES for Combined Chart ---
+    
+    # 1. Weight Goal (Y-axis 1)
+    if g_weight is not None:
+        fig.add_shape(type="line", xref="paper", yref="y", x0=0, x1=1, y0=g_weight, y1=g_weight, line=dict(color=weight_color, dash="dash", width=2), opacity=0.6)
+        
+        # User's corrected annotation logic for Weight
+        fig.add_annotation(
+            x=dataframe[x_col].iloc[-1],
+            y=g_weight,
+            text="Goal",
+            showarrow=False,
+            font=dict(size=10, color=text_color),
+            bgcolor=bg_color, 
+            bordercolor=weight_color,
+            opacity=0.75,
+            xanchor="right", yanchor="middle",
+            borderpad=5,
+            borderwidth=1,
+            captureevents=False,
+            hoverlabel=dict(bgcolor='rgba(0,0,0,0)', bordercolor='rgba(0,0,0,0)'),
+        )
+
+    # 2. Body Fat Goal (Y-axis 2)
+    if g_bf is not None:
+        fig.add_shape(type="line", xref="paper", yref="y2", x0=0, x1=1, y0=g_bf, y1=g_bf, line=dict(color=bf_color, dash="dash", width=2), opacity=0.6)
+        
+        # User's corrected annotation logic for BF%
+        fig.add_annotation(
+            x=dataframe[x_col].iloc[-1],
+            y=g_bf,
+            yref="y2",
+            text="Goal",
+            showarrow=False,
+            font=dict(size=10, color=text_color),
+            bgcolor=bg_color, 
+            bordercolor=bf_color,
+            opacity=0.75,
+            xanchor="right", yanchor="middle",
+            borderpad=5,
+            borderwidth=1,
+            captureevents=False,
+            hoverlabel=dict(bgcolor='rgba(0,0,0,0)', bordercolor='rgba(0,0,0,0)'),
+        )
+        
+    # Backgrounds (Code remains the same)
+    df = dataframe.copy()
     df['phase_change'] = df['Phase'] != df['Phase'].shift(1)
     change_indices = df.index[df['phase_change']].tolist()
     if 0 not in change_indices: change_indices.insert(0, 0)
@@ -224,8 +367,12 @@ def create_combined_chart(dataframe, x_unit_mode, g_weight=None, g_bf=None):
     
     fig = apply_chart_style(fig, "Combined Projection", x_title, "Weight (kg)")
     fig.update_layout(
-        yaxis=dict(title=dict(text="Weight (kg)", font=dict(color="#FFA500")), tickfont=dict(color="#FFA500")),
-        yaxis2=dict(title=dict(text="Body Fat %", font=dict(color="#3399FF")), tickfont=dict(color="#3399FF"), overlaying="y", side="right")
+        yaxis=dict(title=dict(text="Weight (kg)")), 
+        yaxis2=dict(
+            title=dict(text="Body Fat %"), 
+            overlaying="y", 
+            side="right"
+        )
     )
     return fig
 
@@ -267,8 +414,8 @@ with c_right:
     # Tissue Chart
     fig_tissue = go.Figure()
     x_col = "Month" if plot_unit == "Months" else "Week"
-    fig_tissue.add_trace(go.Scatter(x=df[x_col], y=df["LeanMass"], mode='lines', name="Muscle", line=dict(color="#d640ff", width=2)))
-    fig_tissue.add_trace(go.Scatter(x=df[x_col], y=df["FatMass"], mode='lines', name="Fat", line=dict(color="#ffffff", width=2, dash='dash')))
+    fig_tissue.add_trace(go.Scatter(x=df[x_col], y=df["LeanMass"], mode='lines', name="Muscle", line=dict(color="#ff4040", width=2)))
+    fig_tissue.add_trace(go.Scatter(x=df[x_col], y=df["FatMass"], mode='lines', name="Fat", line=dict(color="#3399FF", width=2, dash='dash')))
     
     # Tissue backgrounds
     df['phase_change'] = df['Phase'] != df['Phase'].shift(1)

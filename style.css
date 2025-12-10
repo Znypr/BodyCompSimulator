@@ -5,55 +5,78 @@
 }
 
 /* ============================================================
-   1. CHART CARDS 
+   DARK MODE TEXT FIX (Overrides all text to White when background is dark)
    ============================================================ */
+/* Target the app when its background is dark. This has the highest specificity. */
+.stApp[style*="background-color: rgb(14, 17, 23)"] {
+    /* CRITICAL FIX: Forces ALL headings, labels, and paragraph text to white */
+    & h1, & h2, & h3, & p, & label, & span, 
+    & .stMarkdown, & [data-testid="stMetricValue"], & [data-testid="stMetricLabel"] {
+        color: #ffffff !important;
+    }
+}
+
+/* ============================================================
+   CHART CARDS (Always matches the Left Panel)
+   ============================================================ */
+
+.stPlotlyChart, .stCard {
+    border: none !important;
+    box-shadow: none !important;
+}
+
+
 [data-testid="stPlotlyChart"] {
-    background-color: var(--sidebar-background-color) !important;
+    /* Uses the Sidebar/Left Panel color which switches automatically with the toggle */
+    background-color: var(--secondary-background-color) !important;
+    
     border: 1px solid rgba(128, 128, 128, 0.2);
     box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     border-radius: 8px;
 }
 
-
-
 /* ============================================================
-   2. INPUT BOXES (White Box / Gray Border)
+   LIGHT MODE (Default) INPUT STYLING
    ============================================================ */
-/* Target the input container specifically */
-[data-testid="stSidebar"] div[data-baseweb="input"] {
+:root[data-theme="light"] input {
     background-color: #ffffff !important;
-    
-    /* MATCHES THE GRAY DIVIDER LINE (Darker than before) */
-    border: 1px solid #d6d6d6 !important; 
-    border-radius: 4px !important;
-}
-
-/* Force Text to be Black */
-[data-testid="stSidebar"] input {
     color: #000000 !important;
     -webkit-text-fill-color: #000000 !important;
-    caret-color: #000000 !important;
 }
 
-/* Buttons (+/-) */
-[data-testid="stSidebar"] button {
-    color: #333333 !important;
-    background: transparent !important;
-    border: none !important;
+:root[data-theme="light"] div[data-baseweb="input"] {
+    background-color: #ffffff !important;
+    border: 1px solid #d6d6d6 !important;
 }
 
-/* Remove Blue Glow */
-[data-testid="stSidebar"] div[data-baseweb="input"]:focus-within {
-    border-color: #a0a0a0 !important;
-    box-shadow: none !important;
+:root[data-theme="light"] .stPlotlyChart > div {
+    background-color: #ffffff !important;
+    border: 1px solid #d6d6d6 !important;
+    border-radius: 8px !important;
 }
 
 /* ============================================================
-   3. TEXT FIXES
+   DARK MODE INPUT STYLING (Dark Gray Box / White Text)
    ============================================================ */
-/* Metrics adapt automatically (Black in Light Mode, White in Dark Mode) */
-[data-testid="stMetricLabel"] {
-    color: var(--text-color) !important;
-    opacity: 0.7;
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select {
+    background-color: #31333f !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
 }
 
+:root[data-theme="dark"] .stTextInput > div > div,
+:root[data-theme="dark"] .stNumberInput > div > div {
+    background-color: #2a2a2f !important;
+}
+
+:root[data-theme="dark"] ::placeholder {
+    color: #bbbbbb !important;
+}
+
+:root[data-theme="dark"] .stPlotlyChart > div {
+    background-color: #0e1117 !important; /* sidebar bg color */
+    border: 1px solid rgba(128, 128, 128, 0.2) !important;
+    border-radius: 8px !important;
+}
