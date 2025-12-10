@@ -221,8 +221,8 @@ def create_forbes_chart(dataframe):
     
     # Specific Axis Overrides
     fig.update_layout(
-        xaxis=dict(range=[8, 30], dtick=3), 
-        yaxis=dict(range=[40, 85], dtick=10), 
+        xaxis=dict(range=[10, 26], dtick=2), 
+        yaxis=dict(range=[35, 85], dtick=5), 
         margin=dict(l=50, r=30, t=60, b=50), 
     )
     
