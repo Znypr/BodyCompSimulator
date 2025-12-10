@@ -1,28 +1,34 @@
-# Body Composition Dashboard 📊
+# Body Composition Simulator 📊
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
 ![Streamlit](https://img.shields.io/badge/Streamlit-App-FF4B4B)
 ![Plotly](https://img.shields.io/badge/Plotly-Visualization-3399FF)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-A scientific body composition simulator built with Python. Unlike simple linear weight trackers, this dashboard uses physiological constraints—such as **Forbes Law** and the **Alpert Limit**—to model realistic muscle gain and fat loss trajectories over multi-year bulk/cut cycles.
+A scientific dashboard using physiological models to simulate realistic long-term muscle gain and fat loss trajectories across bulk/cut cycles.
 
 ![Dashboard Screenshot](imgs/screenshot.png)
+
+---
 
 ## 🚀 Key Features
 
 ### 🧬 Physiological Modeling
-* **Forbes Curve Integration:** Dynamically adjusts your "P-Ratio" (partitioning ratio). The simulator understands that leaner individuals gain more muscle in a surplus, while those with higher body fat gain preferentially more fat.
-* **Smart Muscle Protection (Alpert Limit):** Enforces the biological limit of fat oxidation (~69 kcal/kg of fat mass/day). If you attempt a deficit larger than your fat stores can support, the simulation warns you and models the resulting muscle catabolism.
-* **Metabolic Staleness:** Simulates "diet fatigue." Anabolic efficiency decays the longer you stay in a surplus, encouraging realistic cycle structuring.
+
+* **Forbes Law Integration:** Dynamically calculates the "P-Ratio" (partitioning ratio) based on current fat mass, modeling that anabolic efficiency is higher at lower body fat levels.
+* **Alpert Limit (Muscle Sparing):** Enforces a biological limit on fat loss (~69 kcal/kg of fat mass/day). Simulations warn and model muscle catabolism if the calorie deficit exceeds this limit.
+* **Metabolic Staleness:** Models the decay of anabolic efficiency the longer an individual remains in a caloric surplus, promoting strategic cycle length planning.
 
 ### 🛠 Advanced Protocol Planning
-* **Geometric Cycle Scaling:** Automatically scale the length of future bulk/cut cycles to model the increasing difficulty of gains over time.
-* **Custom Priming Phases:** Configure a specific "Mini-Cut" or "Kickstart Bulk" before settling into your long-term cycle rhythm.
+
+* **Geometric Cycle Scaling:** Future bulk/cut cycles can be automatically scaled to model the increasing difficulty of physiological gains over time.
+* **Custom Priming Phases:** Define an initial "Mini-Cut" or "Kickstart Bulk" phase before the recurring cycle begins.
 * **Interactive Visualizations:**
-    * Combined Dual-Axis projections (Weight vs. Body Fat %).
-    * Tissue Composition charts (Lean Mass vs. Fat Mass).
-    * Visual "Efficiency Zones" based on your starting body fat.
+    * **Combined Projection Chart:** Dual-axis plot tracking Body Weight and Body Fat percentage against set goals.
+    * **P-Ratio Efficiency Graph:** Visualizes current Body Fat % on the theoretical Forbes Curve.
+    * **Tissue Composition Chart:** Separately tracks Lean Mass and Fat Mass trajectories.
+
+---
 
 ## 📦 Installation
 
@@ -33,8 +39,10 @@ A scientific body composition simulator built with Python. Unlike simple linear 
     ```
 
 2.  **Install dependencies**
+
+    *Ensure you have a `requirements.txt` file generated (e.g., using `pip freeze > requirements.txt`).*
     ```bash
-    pip install streamlit plotly numpy pandas
+    pip install -r requirements.txt
     ```
 
 3.  **Run the application**
@@ -42,25 +50,23 @@ A scientific body composition simulator built with Python. Unlike simple linear 
     streamlit run main.py
     ```
 
+---
+
 ## 🧠 The Science Behind It
 
 ### 1. Forbes Law (Partitioning Ratio)
-The amount of muscle you gain in a surplus is mathematically linked to your current body fat percentage.
-> *Formula:* `Lean Gain Ratio = 10.4 / (10.4 + Fat Mass)`
-
-This means a user starting at 10% body fat will partition significantly more calories into muscle than a user starting at 20% body fat.
+The partitioning of energy towards lean mass gain in a surplus is modeled using the formula derived from Forbes' research:
+> *Formula:* $\text{Lean Gain Ratio} = 10.4 / (10.4 + \text{Fat Mass})$
 
 ### 2. The Alpert Limit (Muscle Sparing)
-Research suggests the human body can mobilize approximately **69 kcal per kilogram of fat mass per day**.
-* **Safe Zone:** If your deficit < (Fat Mass * 69), you lose mostly fat.
-* **Danger Zone:** If your deficit > (Fat Mass * 69), the remaining energy must be created by breaking down lean muscle tissue.
+The safe maximum caloric deficit is constrained by the body's ability to mobilize fat stores, estimated at approximately **69 kcal per kilogram of fat mass per day**. Exceeding this limit results in accelerated lean mass loss.
 
-This dashboard visualizes exactly when you cross this threshold (displayed as "Unsafe" red zones in the charts).
+---
 
 ## 🎨 Tech Stack
 * **Frontend:** [Streamlit](https://streamlit.io/) for the interactive UI.
-* **Visualization:** [Plotly Graph Objects](https://plotly.com/python/) for high-performance, interactive vector charts.
-* **Logic:** [NumPy](https://numpy.org/) & [Pandas](https://pandas.pydata.org/) for vectorized simulation dataframes.
+* **Visualization:** [Plotly Graph Objects](https://plotly.com/python/) for interactive charts.
+* **Logic:** [NumPy](https://numpy.org/) & [Pandas](https://pandas.pydata.org/) & [SciPy](https://scipy.org/) (for non-linear equation solving).
 
 ## 📄 License
 This project is open-source and available under the [MIT License](LICENSE).
