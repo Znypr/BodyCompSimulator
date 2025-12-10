@@ -11,13 +11,9 @@ __pycache__/
 .secrets
 
 
-/build/
-
-*.spec
-
-pip-log.txt
-
-
 Thumbs.db
 
-dist/
+# Python Build Artifacts
+/dist/
+/build/
+*.spec
