@@ -1,443 +1,415 @@
-import streamlit as st
+from __future__ import annotations
+
+from pathlib import Path
+
 import plotly.graph_objects as go
-import numpy as np
+import streamlit as st
+
 import logic
-from matplotlib import cm
 
-st.set_page_config(page_title="Body Comp Simulator", layout="wide")
-
-if 'theme_id' not in st.session_state:
-    st.session_state.theme_id = st.get_option("theme.base")
-
-if st.get_option("theme.base") != st.session_state.theme_id:
-    st.session_state.theme_id = st.get_option("theme.base")
-    st.rerun()
-
-with open('style.css') as f:
-    st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
-
-# --- Sidebar ---
-st.sidebar.title("Configuration")
-
-# 1. Stats & Goals
-st.sidebar.subheader("Current & Goals")
-c1, c2 = st.sidebar.columns(2)
-start_weight = c1.number_input("Weight (kg)", value=79.0, step=0.1, format="%.1f")
-start_bf = c2.number_input("Body Fat %", value=18.0, step=0.1, format="%.1f")
-
-c3, c4 = st.sidebar.columns(2)
-goal_weight = c3.number_input("Goal Weight", value=85.0, step=0.5, format="%.1f")
-goal_bf = c4.number_input("Goal BF%", value=10.0, step=0.5, format="%.1f")
-
-# 2. Protocol
-st.sidebar.markdown("---")
-st.sidebar.subheader("Protocol")
-
-r1_c1, r1_c2 = st.sidebar.columns(2)
-mode = r1_c1.radio("Start", ["Cut", "Bulk"], index=0, horizontal=True)
-first_label = "First Bulk Weeks" if mode == "Bulk" else "First Cut Weeks"
-first_phase_weeks = r1_c2.number_input(first_label, 1, 52, 6)
-
-r2_c1, r2_c2 = st.sidebar.columns(2)
-bulk_weeks = r2_c1.number_input("Bulk Weeks", 1, 52, 6)
-cut_weeks = r2_c2.number_input("Cut Weeks", 1, 52, 2)
-
-r3_c1, r3_c2 = st.sidebar.columns(2)
-surplus = r3_c1.number_input("Bulk Surplus", 0, 1500, 300, step=25)
-deficit = r3_c2.number_input("Cut Deficit", 0, 1500, 500, step=25)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("Physiology")
-efficiency = st.sidebar.slider("Base Training Quality", 0.1, 1.0, 1.0, help="1.0 = Genetic Limit.")
-fatigue_pct = st.sidebar.slider("Bulk Staleness Decay", 0.0, 5.0, 1.5, step=0.1, format="%.1f%%")
-scale_coeff = st.sidebar.number_input("Cycle Scale Multiplier", 0.8, 2.0, 1.0, 0.1)
-
-st.sidebar.markdown("---")
-r4_c1, r4_c2 = st.sidebar.columns([2, 1])
-
-plot_unit = r4_c2.radio("Units", ["Months", "Weeks"], horizontal=True)
-
-if plot_unit == "Months":
-    view_val = r4_c1.slider("Timeline (Months)", 1, 60, 24)
-    view_weeks_calc = view_val * 4.345
-else:
-    view_val = r4_c1.slider("Timeline (Weeks)", 4, 260, 104)
-    view_weeks_calc = view_val
-
-view_months = int(view_weeks_calc / 4.345) 
-
-fatigue_decimal = fatigue_pct / 100.0
-
-# --- Logic ---
-df = logic.calculate_projection(
-    start_weight, start_bf, efficiency,
-    bulk_weeks, cut_weeks, surplus, deficit,
-    view_weeks_calc, scale_coeff, mode,
-    first_phase_weeks, fatigue_decimal
+st.set_page_config(
+    page_title="Body Composition Simulator",
+    page_icon="◐",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-df["Month"] = df["Week"] / 4.345
+STYLE_PATH = Path(__file__).with_name("style.css")
+if STYLE_PATH.exists():
+    st.markdown(f"<style>{STYLE_PATH.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
 
-# --- REUSABLE WIDGETS ---
+
+PHASE_COLORS = {
+    "Bulk": "rgba(34, 197, 94, 0.07)",
+    "Cut": "rgba(239, 68, 68, 0.07)",
+}
 
 
-def apply_chart_style(fig, title, x_title, y_label):
-    current_theme = st.get_option("theme.base")
-    plotly_template = "plotly_dark" if current_theme == "dark" else "plotly_white"
-    
+def theme_template() -> str:
+    return "plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white"
+
+
+def add_phase_backgrounds(fig: go.Figure, dataframe, x_column: str) -> None:
+    phase_groups = (dataframe["Phase"] != dataframe["Phase"].shift()).cumsum()
+    for _, group in dataframe.groupby(phase_groups, sort=True):
+        phase = group["Phase"].iloc[0]
+        fig.add_vrect(
+            x0=group[x_column].iloc[0],
+            x1=group[x_column].iloc[-1],
+            fillcolor=PHASE_COLORS.get(phase, "rgba(148, 163, 184, 0.06)"),
+            line_width=0,
+            layer="below",
+        )
+
+
+def style_chart(fig: go.Figure, title: str, x_title: str, y_title: str, height: int = 360) -> go.Figure:
     fig.update_layout(
-        title=dict(text=f"<b>{title}</b>", font=dict(size=20), x=0.05),
-        xaxis_title=x_title, 
-        yaxis_title=y_label,
-        
-        # 1. Use the Theme Template (fixes text colors)
-        template=plotly_template, 
-        
-        # 2. But force backgrounds to be transparent so CSS color shows through
-        paper_bgcolor='rgba(0,0,0,0)', 
-        plot_bgcolor='rgba(0,0,0,0)',
-        
-        margin=dict(l=50, r=30, t=60, b=50), 
-        height=320, 
+        title=dict(text=title, x=0.02, font=dict(size=19)),
+        template=theme_template(),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=54, r=34, t=64, b=48),
+        height=height,
         hovermode="x unified",
-        legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center")
+        legend=dict(orientation="h", y=1.12, x=0.5, xanchor="center"),
+        xaxis_title=x_title,
+        yaxis_title=y_title,
     )
-    
-    # Grid lines (Need to override the theme's grid color for stability)
-    grid_color = 'rgba(128, 128, 128, 0.2)'
-    fig.update_xaxes(showgrid=True, gridcolor=grid_color, zeroline=False)
-    fig.update_yaxes(showgrid=True, gridcolor=grid_color, zeroline=False)
-    
+    fig.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,0.16)", zeroline=False)
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.16)", zeroline=False)
     return fig
 
-def render_card(fig):
-    st.plotly_chart(fig, width="stretch", config={'displayModeBar': False})
 
-# --- Chart Creators ---
-
-# main.py - inside create_forbes_chart
-
-# ... (Previous code for importing matplotlib and the function definition)
-
-def create_tissue_chart(dataframe):
-    df = dataframe.copy()
-
-    # Tissue Chart
-    fig_tissue = go.Figure()
-    x_col = "Month" if plot_unit == "Months" else "Week"
-    fig_tissue.add_trace(go.Scatter(x=df[x_col], y=df["LeanMass"], mode='lines', name="Muscle", line=dict(color="#ff4040", width=2),hovertemplate='Lean Mass: %{y:.1f} kg<extra></extra>'))
-    fig_tissue.add_trace(go.Scatter(x=df[x_col], y=df["FatMass"], mode='lines', name="Fat", line=dict(color="#3399FF", width=2, dash='dash'),hovertemplate='Fat Mass: %{y:.1f} kg<extra></extra>'))
-    
-    # Tissue backgrounds
-    df['phase_change'] = df['Phase'] != df['Phase'].shift(1)
-    change_indices = df.index[df['phase_change']].tolist()
-    if 0 not in change_indices: change_indices.insert(0, 0)
-    change_indices.append(len(df))
-    shapes = []
-    for i in range(len(change_indices) - 1):
-        start, end = change_indices[i], change_indices[i+1]
-        x0 = df[x_col].iloc[start]
-        x1 = df[x_col].iloc[end-1] if end < len(df) else df[x_col].iloc[-1]
-        phase = df['Phase'].iloc[start]
-        if phase == 'Bulk': color = "rgba(46, 204, 113, 0.06)"
-        elif phase == 'Cut': color = "rgba(231, 76, 60, 0.06)"
-        else: color = "rgba(139, 0, 0, 0.2)"
-        shapes.append(dict(type="rect", xref="x", yref="paper", x0=x0, x1=x1, y0=0, y1=1, fillcolor=color, line=dict(width=0), layer="below"))
-    
-    fig_tissue.update_layout(shapes=shapes)
-
-    return apply_chart_style(fig_tissue, "Tissue Composition", x_col, "Mass (kg)")
-
-def create_forbes_chart(dataframe):
+def combined_chart(dataframe, x_column: str, goal_weight: float, goal_bf: float) -> go.Figure:
     fig = go.Figure()
-    
-    # 1. Theoretical Forbes Curve Calculation
-    bf_range = np.arange(8.0, 30.1, 0.1) 
-    p_values = []
-    
-    for bf in bf_range:
-        p = logic.get_canonical_p_ratio(bf) * 100 
-        p_values.append(p)
-
-    # 2. Implement Gradient Rectangles
-    # ... (code for shapes and gradient remains the same as in the last approved step)
-    shapes = []
-    num_zones = 50 
-    zone_size = (bf_range.max() - bf_range.min()) / num_zones
-    bf_colors = cm.get_cmap('RdYlGn_r') 
-
-    for i in range(num_zones):
-        x0 = bf_range.min() + i * zone_size
-        x1 = x0 + zone_size
-        mid_bf = (x0 + x1) / 2
-        
-        normalized_bf = (mid_bf - bf_range.min()) / (bf_range.max() - bf_range.min())
-        
-        r, g, b, _ = bf_colors(normalized_bf)
-        rgba_color = f"rgba({int(r*255)}, {int(g*255)}, {int(b*255)}, 0.15)" 
-
-        shapes.append(dict(
-            type="rect", xref="x", yref="paper", 
-            x0=x0, x1=x1, y0=0, y1=1, 
-            fillcolor=rgba_color, line=dict(width=0), layer="below"
-        ))
-    
-    fig.update_layout(shapes=shapes)
-
-    # 3. Forbes Curve
-    fig.add_trace(go.Scatter(
-        x=bf_range, 
-        y=p_values,
-        mode='lines',
-        name='Forbes Curve',
-        line=dict(color='#888888', width=3, dash='dash'),
-        hovertemplate='P-Ratio: %{y:.1f}%<extra></extra>' 
-    ))
-    
-    # 4. Start & End Markers
-    start_row = dataframe.iloc[0]
-    end_row = dataframe.iloc[-1]
-
-    start_p_ratio = logic.get_canonical_p_ratio(start_row["BodyFat"]) * 100
-    end_p_ratio = logic.get_canonical_p_ratio(end_row["BodyFat"]) * 100
-    
-    fig.add_trace(go.Scatter(
-        x=[start_row["BodyFat"]], y=[start_p_ratio], 
-        mode='markers+text', name='Start', text=["Start"], textposition="top right",
-        marker=dict(color='#3399FF', size=12, line=dict(color='white', width=1)),
-        hovertemplate='Start P-Ratio: %{y:.1f}%<extra></extra>'
-    ))
-    
-    fig.add_trace(go.Scatter(
-        x=[end_row["BodyFat"]], y=[end_p_ratio], 
-        mode='markers+text', name='End', text=["End"], textposition="top right",
-        marker=dict(color='#2ecc71', size=12, line=dict(color='white', width=1)),
-        hovertemplate='End P-Ratio: %{y:.1f}%<extra></extra>'
-    ))
-
-    # 5. Apply Unified Style and Legend (FIXED TITLES AND LABELS)
-    # Restore original title and Y-axis label
-    fig = apply_chart_style(fig, "P-Ratio Efficiency Graph", "Body Fat %", "Muscle Partitioning (%)")
-    
-    # Specific Axis Overrides
+    fig.add_trace(
+        go.Scatter(
+            x=dataframe[x_column],
+            y=dataframe["Weight"],
+            name="Weight",
+            mode="lines",
+            line=dict(color="#f59e0b", width=3),
+            hovertemplate="%{y:.2f} kg<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=dataframe[x_column],
+            y=dataframe["BodyFat"],
+            name="Body fat",
+            mode="lines",
+            yaxis="y2",
+            line=dict(color="#3b82f6", width=3, dash="dot"),
+            hovertemplate="%{y:.2f}%<extra></extra>",
+        )
+    )
+    fig.add_hline(y=goal_weight, line_dash="dash", line_color="#f59e0b", opacity=0.6)
+    fig.add_shape(
+        type="line",
+        xref="paper",
+        yref="y2",
+        x0=0,
+        x1=1,
+        y0=goal_bf,
+        y1=goal_bf,
+        line=dict(color="#3b82f6", dash="dash", width=1.5),
+        opacity=0.6,
+    )
+    add_phase_backgrounds(fig, dataframe, x_column)
+    style_chart(fig, "Weight and body-fat projection", x_column, "Weight (kg)")
     fig.update_layout(
-        xaxis=dict(range=[10, 26], dtick=2), 
-        yaxis=dict(range=[35, 85], dtick=5), 
-        margin=dict(l=50, r=30, t=60, b=50), 
+        yaxis=dict(title="Weight (kg)"),
+        yaxis2=dict(title="Body fat (%)", overlaying="y", side="right", showgrid=False),
     )
-    
-    
     return fig
 
-def create_time_chart(dataframe, y_col, color_line, title, y_label, x_unit_mode, goal_val=None):
+
+def tissue_chart(dataframe, x_column: str) -> go.Figure:
     fig = go.Figure()
-    x_col = "Month" if x_unit_mode == "Months" else "Week"
-    x_title = x_unit_mode
+    fig.add_trace(
+        go.Scatter(
+            x=dataframe[x_column],
+            y=dataframe["LeanMass"],
+            name="Fat-free mass",
+            mode="lines",
+            line=dict(color="#22c55e", width=3),
+            hovertemplate="%{y:.2f} kg<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=dataframe[x_column],
+            y=dataframe["FatMass"],
+            name="Fat mass",
+            mode="lines",
+            line=dict(color="#ef4444", width=3),
+            hovertemplate="%{y:.2f} kg<extra></extra>",
+        )
+    )
+    add_phase_backgrounds(fig, dataframe, x_column)
+    return style_chart(
+        fig,
+        "Body-composition compartments",
+        x_column,
+        "Mass (kg)",
+    )
 
 
-    fig.add_trace(go.Scatter(
-        x=dataframe[x_col], y=dataframe[y_col], 
-        mode='lines', name=title, line=dict(color=color_line, width=3),
-        hovertemplate =f'{y_label}: %{{y:.1f}}<extra></extra>'
-    ))
-    
-    # --- GOAL VISIBILITY FIX: Theme-Aware Annotation ---
-    if goal_val is not None:
-        
-        # Theme Logic (REQUIRED for bg_color)
-        current_theme = st.get_option("theme.base")
-        if current_theme == "dark":
-            bg_color = "rgba(40, 42, 54, 0.8)" 
-            text_color = "#ffffff"              
+def energy_chart(dataframe, x_column: str) -> go.Figure:
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=dataframe[x_column],
+            y=dataframe["Intake"],
+            name="Energy intake",
+            mode="lines",
+            line=dict(color="#8b5cf6", width=2.5),
+            hovertemplate="%{y:.0f} kcal/day<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=dataframe[x_column],
+            y=dataframe["TDEE"],
+            name="Estimated expenditure",
+            mode="lines",
+            line=dict(color="#06b6d4", width=2.5),
+            hovertemplate="%{y:.0f} kcal/day<extra></extra>",
+        )
+    )
+    add_phase_backgrounds(fig, dataframe, x_column)
+    return style_chart(fig, "Energy model", x_column, "Energy (kcal/day)")
+
+
+def forbes_chart(dataframe) -> go.Figure:
+    max_fat = max(35.0, float(dataframe["FatMass"].max()) * 1.25)
+    fat_values = [0.5 + i * (max_fat - 0.5) / 160 for i in range(161)]
+    fractions = [100.0 * logic.forbes_ffm_weight_fraction(value) for value in fat_values]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=fat_values,
+            y=fractions,
+            name="Forbes baseline",
+            mode="lines",
+            line=dict(color="#94a3b8", width=3),
+            hovertemplate="Fat mass: %{x:.1f} kg<br>FFM share: %{y:.1f}%<extra></extra>",
+        )
+    )
+    start = dataframe.iloc[0]
+    end = dataframe.iloc[-1]
+    fig.add_trace(
+        go.Scatter(
+            x=[start["FatMass"], end["FatMass"]],
+            y=[
+                100.0 * logic.forbes_ffm_weight_fraction(start["FatMass"]),
+                100.0 * logic.forbes_ffm_weight_fraction(end["FatMass"]),
+            ],
+            text=["Start", "End"],
+            name="Scenario",
+            mode="markers+text",
+            textposition="top center",
+            marker=dict(size=11, color=["#3b82f6", "#22c55e"]),
+            hovertemplate="%{text}: %{x:.1f} kg fat mass<extra></extra>",
+        )
+    )
+    return style_chart(
+        fig,
+        "Forbes baseline partition",
+        "Fat mass (kg)",
+        "Fat-free share of weight change (%)",
+    )
+
+
+with st.sidebar:
+    st.header("Scenario inputs")
+    st.caption("Metric units only")
+
+    with st.expander("Starting point", expanded=True):
+        profile_left, profile_right = st.columns(2)
+        start_weight = profile_left.number_input(
+            "Weight (kg)", min_value=30.0, max_value=300.0, value=79.0, step=0.1
+        )
+        start_bf = profile_right.number_input(
+            "Body fat (%)", min_value=3.0, max_value=65.0, value=18.0, step=0.1
+        )
+        goal_left, goal_right = st.columns(2)
+        goal_weight = goal_left.number_input(
+            "Goal weight (kg)", min_value=30.0, max_value=300.0, value=75.0, step=0.5
+        )
+        goal_bf = goal_right.number_input(
+            "Goal body fat (%)", min_value=3.0, max_value=65.0, value=11.0, step=0.5
+        )
+        activity_level = st.selectbox(
+            "Daily activity",
+            list(logic.ACTIVITY_FACTORS),
+            index=list(logic.ACTIVITY_FACTORS).index("Moderate"),
+        )
+        estimated_maintenance = logic.estimate_maintenance_kcal(
+            start_weight, start_bf, activity_level
+        )
+        use_measured_maintenance = st.toggle(
+            "Use measured maintenance calories",
+            value=False,
+            help="A maintenance value calibrated from several weeks of intake and weight data is usually better than an equation.",
+        )
+        measured_maintenance = None
+        if use_measured_maintenance:
+            measured_maintenance = st.number_input(
+                "Maintenance (kcal/day)",
+                min_value=1000,
+                max_value=6000,
+                value=int(round(estimated_maintenance / 50) * 50),
+                step=25,
+            )
         else:
-            bg_color = "#ffffff"
-            text_color = "#000000"
-            
-        fig.add_hline(y=goal_val, line_dash="dash", line_color=color_line, opacity=0.8)
+            st.caption(f"Estimated maintenance: {estimated_maintenance:,.0f} kcal/day")
 
-        # User's corrected annotation logic applied
-        fig.add_annotation(
-            x=dataframe[x_col].iloc[-1],
-            y=goal_val,
-            text="Goal",
-            showarrow=False,
-            font=dict(
-                size=10,
-                color=text_color
-            ),
-            bgcolor=bg_color, # NOW DEFINED BY THEME LOGIC
-            bordercolor=color_line,
-            opacity=0.75, 
-            xanchor="right",
-            yanchor="middle",
-            borderpad=5,
-            borderwidth=1,
-            captureevents=False,
-            hoverlabel=dict(bgcolor='rgba(0,0,0,0)', bordercolor='rgba(0,0,0,0)'),
+    with st.expander("Training and nutrition", expanded=True):
+        training_status = st.selectbox(
+            "Resistance-training status",
+            list(logic.MAX_FFM_GAIN_FRACTION_PER_MONTH),
+            index=1,
         )
-    # --- END GOAL VISIBILITY FIX ---
-
-    df = dataframe.copy()
-    df['phase_change'] = df['Phase'] != df['Phase'].shift(1)
-    change_indices = df.index[df['phase_change']].tolist()
-    if 0 not in change_indices: change_indices.insert(0, 0)
-    change_indices.append(len(df))
-    
-    shapes = []
-    for i in range(len(change_indices) - 1):
-        start, end = change_indices[i], change_indices[i+1]
-        x0 = dataframe[x_col].iloc[start]
-        x1 = dataframe[x_col].iloc[end-1] if end < len(df) else dataframe[x_col].iloc[-1]
-        phase = df['Phase'].iloc[start]
-        
-        if phase == 'Bulk': color = "rgba(46, 204, 113, 0.06)"
-        elif phase == 'Cut': color = "rgba(231, 76, 60, 0.06)"
-        else: color = "rgba(139, 0, 0, 0.2)" 
-            
-        shapes.append(dict(type="rect", xref="x", yref="paper", x0=x0, x1=x1, y0=0, y1=1, fillcolor=color, line=dict(width=0), layer="below"))
-
-    fig.update_layout(shapes=shapes)
-    return apply_chart_style(fig, title, x_title, y_label)
-
-def create_combined_chart(dataframe, x_unit_mode, g_weight=None, g_bf=None):
-    fig = go.Figure()
-    x_col = "Month" if x_unit_mode == "Months" else "Week"
-    x_title = x_unit_mode
-
-    # Theme Logic (REQUIRED for bg_color)
-    current_theme = st.get_option("theme.base")
-    if current_theme == "dark":
-        bg_color = "rgba(40, 42, 54, 0.8)"
-        text_color = "#ffffff"
-    else:
-        bg_color = "#ffffff"
-        text_color = "#000000"
-
-    # Weight Trace (Orange)
-    weight_color = "#FFA500"
-    fig.add_trace(go.Scatter(
-        x=dataframe[x_col], y=dataframe["Weight"],
-        name="Weight (kg)", mode='lines', line=dict(color=weight_color, width=3),
-        hovertemplate='Weight: %{y:.1f} kg<extra></extra>'
-    ))
-    
-    # Body Fat Trace (Blue)
-    bf_color = "#3399FF"
-    fig.add_trace(go.Scatter(
-        x=dataframe[x_col], y=dataframe["BodyFat"],
-        name="Body Fat %", mode='lines', line=dict(color=bf_color, width=3, dash='dot'), yaxis="y2",
-        hovertemplate='Body Fat %: %{y:.1f}%<extra></extra>'
-    ))
-
-    # --- GOAL VISIBILITY FIXES for Combined Chart ---
-    
-    # 1. Weight Goal (Y-axis 1)
-    if g_weight is not None:
-        fig.add_shape(type="line", xref="paper", yref="y", x0=0, x1=1, y0=g_weight, y1=g_weight, line=dict(color=weight_color, dash="dash", width=2), opacity=0.6)
-        
-        # User's corrected annotation logic for Weight
-        fig.add_annotation(
-            x=dataframe[x_col].iloc[-1],
-            y=g_weight,
-            text="Goal",
-            showarrow=False,
-            font=dict(size=10, color=text_color),
-            bgcolor=bg_color, 
-            bordercolor=weight_color,
-            opacity=0.75,
-            xanchor="right", yanchor="middle",
-            borderpad=5,
-            borderwidth=1,
-            captureevents=False,
-            hoverlabel=dict(bgcolor='rgba(0,0,0,0)', bordercolor='rgba(0,0,0,0)'),
+        training_quality = st.slider(
+            "Training quality and consistency",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.85,
+            step=0.05,
+            help="A scenario modifier, not a genetic score.",
+        )
+        protein_g_per_kg = st.slider(
+            "Protein (g/kg/day)",
+            min_value=0.6,
+            max_value=3.0,
+            value=2.0,
+            step=0.1,
         )
 
-    # 2. Body Fat Goal (Y-axis 2)
-    if g_bf is not None:
-        fig.add_shape(type="line", xref="paper", yref="y2", x0=0, x1=1, y0=g_bf, y1=g_bf, line=dict(color=bf_color, dash="dash", width=2), opacity=0.6)
-        
-        # User's corrected annotation logic for BF%
-        fig.add_annotation(
-            x=dataframe[x_col].iloc[-1],
-            y=g_bf,
-            yref="y2",
-            text="Goal",
-            showarrow=False,
-            font=dict(size=10, color=text_color),
-            bgcolor=bg_color, 
-            bordercolor=bf_color,
-            opacity=0.75,
-            xanchor="right", yanchor="middle",
-            borderpad=5,
-            borderwidth=1,
-            captureevents=False,
-            hoverlabel=dict(bgcolor='rgba(0,0,0,0)', bordercolor='rgba(0,0,0,0)'),
+    with st.expander("Protocol", expanded=True):
+        mode = st.radio("First phase", ["Cut", "Bulk"], horizontal=True)
+        duration_left, duration_right = st.columns(2)
+        first_phase_weeks = duration_left.number_input(
+            "First phase (weeks)", min_value=1, max_value=104, value=12
         )
-        
-    # Backgrounds (Code remains the same)
-    df = dataframe.copy()
-    df['phase_change'] = df['Phase'] != df['Phase'].shift(1)
-    change_indices = df.index[df['phase_change']].tolist()
-    if 0 not in change_indices: change_indices.insert(0, 0)
-    change_indices.append(len(df))
-    shapes = []
-    for i in range(len(change_indices) - 1):
-        start, end = change_indices[i], change_indices[i+1]
-        x0 = dataframe[x_col].iloc[start]
-        x1 = dataframe[x_col].iloc[end-1] if end < len(df) else dataframe[x_col].iloc[-1]
-        phase = df['Phase'].iloc[start]
-        if phase == 'Bulk': color = "rgba(46, 204, 113, 0.06)"
-        elif phase == 'Cut': color = "rgba(231, 76, 60, 0.06)"
-        else: color = "rgba(139, 0, 0, 0.2)"
-        shapes.append(dict(type="rect", xref="x", yref="paper", x0=x0, x1=x1, y0=0, y1=1, fillcolor=color, line=dict(width=0), layer="below"))
-    
-    for s in shapes: fig.add_shape(s)
-    
-    fig = apply_chart_style(fig, "Combined Projection", x_title, "Weight (kg)")
-    fig.update_layout(
-        yaxis=dict(title=dict(text="Weight (kg)")), 
-        yaxis2=dict(
-            title=dict(text="Body Fat %"), 
-            overlaying="y", 
-            side="right"
+        timeline_months = duration_right.number_input(
+            "Timeline (months)", min_value=1, max_value=60, value=24
         )
+
+        cycle_left, cycle_right = st.columns(2)
+        bulk_weeks = cycle_left.number_input(
+            "Recurring bulk (weeks)", min_value=1, max_value=104, value=16
+        )
+        cut_weeks = cycle_right.number_input(
+            "Recurring cut (weeks)", min_value=1, max_value=104, value=8
+        )
+
+        energy_left, energy_right = st.columns(2)
+        surplus = energy_left.number_input(
+            "Bulk surplus (kcal/day)", min_value=0, max_value=1500, value=200, step=25
+        )
+        deficit = energy_right.number_input(
+            "Cut deficit (kcal/day)", min_value=0, max_value=1500, value=500, step=25
+        )
+
+        fixed_intake = st.toggle(
+            "Keep phase calories fixed",
+            value=True,
+            help="When enabled, the effective surplus or deficit shrinks as expenditure adapts. Disable it to model active calorie adjustments that maintain the requested energy balance.",
+        )
+
+    with st.expander("Advanced planning"):
+        cycle_scale = st.number_input(
+            "Cycle-duration multiplier",
+            min_value=0.5,
+            max_value=2.0,
+            value=1.0,
+            step=0.05,
+            help="1.0 keeps recurring phase durations unchanged.",
+        )
+        plot_unit = st.radio("Chart timeline", ["Months", "Weeks"], horizontal=True)
+
+
+total_weeks = timeline_months * 365.2425 / 12.0 / 7.0
+
+try:
+    df = logic.calculate_projection(
+        start_weight=start_weight,
+        start_bf=start_bf,
+        training_quality=training_quality,
+        base_bulk_weeks=bulk_weeks,
+        base_cut_weeks=cut_weeks,
+        surplus=surplus,
+        deficit=deficit,
+        total_weeks=total_weeks,
+        scale_coeff=cycle_scale,
+        start_mode=mode,
+        first_phase_weeks=first_phase_weeks,
+        training_status=training_status,
+        protein_g_per_kg=protein_g_per_kg,
+        activity_level=activity_level,
+        measured_maintenance_kcal=measured_maintenance,
+        fixed_intake=fixed_intake,
     )
-    return fig
+except ValueError as error:
+    st.error(str(error))
+    st.stop()
 
-# --- Dashboard Layout ---
-st.title("Body Composition Dashboard")
 
-# KPIs
-k1, k2, k3, k4 = st.columns(4)
-start_w = df["Weight"].iloc[0]
-final_w = df["Weight"].iloc[-1]
-start_bf = df["BodyFat"].iloc[0]
-final_bf = df["BodyFat"].iloc[-1]
-start_lm = df["LeanMass"].iloc[0]
-final_lm = df["LeanMass"].iloc[-1]
+df["Month"] = df["Day"] / (365.2425 / 12.0)
+x_column = "Month" if plot_unit == "Months" else "Week"
 
-k1.metric("Final Weight", f"{final_w:.1f} kg", f"{final_w - start_w:+.1f} kg")
-k2.metric("Final BF%", f"{final_bf:.1f}%", f"{final_bf - start_bf:+.1f}%", delta_color="inverse")
-k3.metric("Lean Mass", f"{final_lm:.1f} kg", f"{final_lm - start_lm:+.1f} kg")
-k4.metric("Duration", f"{view_months} Months")
+st.title("Body Composition Simulator")
+st.caption(
+    "Evidence-informed scenario modelling for fat mass, fat-free mass, body weight and energy expenditure. "
+    "This is a planning tool, not a diagnostic or clinical prediction."
+)
 
-# Warning Box
-unsafe_rows = df[df["Phase"] == "Unsafe"]
-if not unsafe_rows.empty:
-    first_crash = unsafe_rows.iloc[0]
-    time_val = f"{first_crash['Month']:.1f} Months" if plot_unit == "Months" else f"{first_crash['Week']:.1f} Weeks"
-    limit_cal = int(first_crash['SafeDeficitLimit'])
-    st.error(f"⚠️ **MUSCLE LOSS WARNING:** At **{time_val}**, fat is too low for a {deficit} deficit. Max Safe Deficit: **{limit_cal} kcal**.")
+start = df.iloc[0]
+final = df.iloc[-1]
+metric_columns = st.columns(5)
+metric_columns[0].metric(
+    "Final weight",
+    f"{final['Weight']:.1f} kg",
+    f"{final['Weight'] - start['Weight']:+.1f} kg",
+)
+metric_columns[1].metric(
+    "Final body fat",
+    f"{final['BodyFat']:.1f}%",
+    f"{final['BodyFat'] - start['BodyFat']:+.1f} pp",
+    delta_color="inverse",
+)
+metric_columns[2].metric(
+    "Fat mass",
+    f"{final['FatMass']:.1f} kg",
+    f"{final['FatMass'] - start['FatMass']:+.1f} kg",
+    delta_color="inverse",
+)
+metric_columns[3].metric(
+    "Fat-free mass",
+    f"{final['LeanMass']:.1f} kg",
+    f"{final['LeanMass'] - start['LeanMass']:+.1f} kg",
+)
+metric_columns[4].metric("Duration", f"{timeline_months} months")
 
-# Charts
-c_left, c_right = st.columns(2)
+high_risk = df[df["Risk"] == "High"]
+moderate_risk = df[df["Risk"] == "Moderate"]
+if not high_risk.empty:
+    first_risk = high_risk.iloc[0]
+    st.warning(
+        f"High projected lean-mass-loss risk begins around week {first_risk['Week']:.1f}. "
+        "This is a continuous risk estimate based on deficit severity and available fat mass, not a hard biological cutoff."
+    )
+elif not moderate_risk.empty:
+    first_risk = moderate_risk.iloc[0]
+    st.info(
+        f"Moderate lean-mass-loss risk appears around week {first_risk['Week']:.1f}. "
+        "Consider a smaller deficit, higher protein intake or stronger resistance-training adherence."
+    )
 
-with c_left:
-    render_card(create_time_chart(df, "Weight", "#FFA500", "Body Weight", "Weight (kg)", plot_unit, goal_weight))
-    render_card(create_time_chart(df, "BodyFat", "#3399FF", "Body Fat %", "BF %", plot_unit, goal_bf))
+left, right = st.columns(2)
+with left:
+    st.plotly_chart(combined_chart(df, x_column, goal_weight, goal_bf), width="stretch", config={"displayModeBar": False})
+    st.plotly_chart(energy_chart(df, x_column), width="stretch", config={"displayModeBar": False})
+with right:
+    st.plotly_chart(tissue_chart(df, x_column), width="stretch", config={"displayModeBar": False})
+    st.plotly_chart(forbes_chart(df), width="stretch", config={"displayModeBar": False})
 
-with c_right:
-    render_card(create_combined_chart(df, plot_unit, goal_weight, goal_bf))
+with st.expander("Phase summary", expanded=False):
+    st.dataframe(logic.summarize_phases(df), hide_index=True, width="stretch")
 
-    render_card(create_forbes_chart(df))
-    render_card(create_tissue_chart(df))
+with st.expander("Model assumptions and scientific basis", expanded=False):
+    st.markdown(
+        """
+- **Fat-free mass is not synonymous with muscle.** It also includes water, glycogen, organs and bone.
+- **Forbes' relationship is used as a baseline for the composition of weight change**, not as a muscle-gain efficiency law.
+- **The Alpert fat-energy-transfer estimate is treated as a graded risk signal**, not a deterministic point where muscle loss suddenly begins.
+- **Protein and resistance training modify lean-mass retention**, but individual response remains highly variable.
+- **Bulk lean-mass gain uses transparent training-status priors** to prevent implausible projections. These are modelling assumptions, not biological ceilings.
+- A measured maintenance intake derived from repeated weight and intake data is preferable to any population equation.
+
+Primary references: Hall et al. (2011), Chow & Hall (2008), Hall (2008), Cunningham (1980), Alpert (2005), Longland et al. (2016), Morton et al. (2018).
+        """
+    )
