@@ -1,72 +1,74 @@
-# Body Composition Simulator 📊
+# Body Composition Simulator
 
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![Streamlit](https://img.shields.io/badge/Streamlit-App-FF4B4B)
-![Plotly](https://img.shields.io/badge/Plotly-Visualization-3399FF)
-![License](https://img.shields.io/badge/License-MIT-green)
+A lightweight Streamlit dashboard for exploring plausible long-term changes in body weight, fat mass, fat-free mass and energy expenditure across cutting and gaining phases.
 
-A scientific dashboard using physiological models to simulate realistic long-term muscle gain and fat loss trajectories across bulk/cut cycles.
+The application uses metric units throughout: kilograms, percentages, grams per kilogram per day, weeks, months and kcal/day.
 
-![Dashboard Screenshot](imgs/screenshot.png)
+## Revised model
 
----
+The previous implementation treated several hypotheses as hard laws. The updated model now:
 
-## 🚀 Key Features
+- uses separate effective energy densities for fat-mass and fat-free-mass change;
+- uses Cunningham resting metabolic rate from fat-free mass;
+- updates expenditure as body weight and fat-free mass change;
+- includes gradual adaptive thermogenesis;
+- uses Forbes' relationship as a baseline for the composition of weight change, not as a pure muscle-gain score;
+- modifies cut outcomes using protein intake, resistance-training quality and deficit severity;
+- treats the Alpert estimate as a continuous risk signal rather than an abrupt cutoff;
+- caps projected fat-free-mass gain with explicit training-status priors;
+- preserves the exact starting state as day zero;
+- labels fat-free mass correctly instead of calling it all muscle.
 
-### 🧬 Physiological Modeling
+## Installation
 
-* **Forbes Law Integration:** Dynamically calculates the "P-Ratio" (partitioning ratio) based on current fat mass, modeling that anabolic efficiency is higher at lower body fat levels.
-* **Alpert Limit (Muscle Sparing):** Enforces a biological limit on fat loss (~69 kcal/kg of fat mass/day). Simulations warn and model muscle catabolism if the calorie deficit exceeds this limit.
-* **Metabolic Staleness:** Models the decay of anabolic efficiency the longer an individual remains in a caloric surplus, promoting strategic cycle length planning.
+```bash
+git clone https://github.com/Znypr/BodyCompSimulator.git
+cd BodyCompSimulator
+python -m venv .venv
+pip install -r requirements.txt
+streamlit run main.py
+```
 
-### 🛠 Advanced Protocol Planning
+## Tests
 
-* **Geometric Cycle Scaling:** Future bulk/cut cycles can be automatically scaled to model the increasing difficulty of physiological gains over time.
-* **Custom Priming Phases:** Define an initial "Mini-Cut" or "Kickstart Bulk" phase before the recurring cycle begins.
-* **Interactive Visualizations:**
-    * **Combined Projection Chart:** Dual-axis plot tracking Body Weight and Body Fat percentage against set goals.
-    * **P-Ratio Efficiency Graph:** Visualizes current Body Fat % on the theoretical Forbes Curve.
-    * **Tissue Composition Chart:** Separately tracks Lean Mass and Fat Mass trajectories.
+```bash
+pip install pytest
+pytest -q
+```
 
----
+The tests cover baseline preservation, energy-balance behaviour, lean-mass retention, training-status gain caps, continuous risk behaviour and metric-unit outputs.
 
-## 📦 Installation
+## Limitations
 
-1.  **Clone the repository**
-    ```bash
-    git clone [https://github.com/Znypr/BodyCompSimulator.git](https://github.com/Znypr/BodyCompSimulator.git)
-    cd BodyCompSimulator
-    ```
+This is a scenario-planning tool, not a clinical prediction engine. Individual responses vary because of measurement error, fluid and glycogen changes, training stimulus, sleep, adherence and genetics.
 
-2.  **Install dependencies**
+Fat-free mass is not identical to skeletal muscle. It also includes water, glycogen, organs, bone and other non-fat tissues. Short-term scale changes can therefore differ from the projected tissue trend.
 
-    *Ensure you have a `requirements.txt` file generated (e.g., using `pip freeze > requirements.txt`).*
-    ```bash
-    pip install -r requirements.txt
-    ```
+A maintenance intake calibrated from several weeks of measured intake and body-weight data is preferable to an equation-based estimate.
 
-3.  **Run the application**
-    ```bash
-    streamlit run main.py
-    ```
+The training-status gain caps are transparent modelling priors designed to prevent impossible outputs. They are not universal biological ceilings.
 
----
+## Scientific basis
 
-## 🧠 The Science Behind It
+Primary and foundational sources:
 
-### 1. Forbes Law (Partitioning Ratio)
-The partitioning of energy towards lean mass gain in a surplus is modeled using the formula derived from Forbes' research:
-> *Formula:* $\text{Lean Gain Ratio} = 10.4 / (10.4 + \text{Fat Mass})$
+1. Hall KD, et al. Quantification of the effect of energy imbalance on bodyweight. Lancet. 2011. DOI: 10.1016/S0140-6736(11)60812-X
+2. Chow CC, Hall KD. The dynamics of human body weight change. PLoS Computational Biology. 2008. DOI: 10.1371/journal.pcbi.1000045
+3. Hall KD. What is the required energy deficit per unit weight loss? International Journal of Obesity. 2008. DOI: 10.1038/sj.ijo.0803720
+4. Cunningham JJ. A reanalysis of the factors influencing basal metabolic rate in normal adults. American Journal of Clinical Nutrition. 1980. DOI: 10.1093/ajcn/33.11.2372
+5. Alpert SS. A limit on the energy transfer rate from the human fat store in hypophagia. Journal of Theoretical Biology. 2005. DOI: 10.1016/j.jtbi.2004.08.029
+6. Longland TM, et al. Higher compared with lower dietary protein during an energy deficit combined with intense exercise promotes greater lean mass gain and fat mass loss. American Journal of Clinical Nutrition. 2016. DOI: 10.3945/ajcn.115.119339
+7. Morton RW, et al. Protein supplementation and resistance-training-induced gains in muscle mass and strength. British Journal of Sports Medicine. 2018. DOI: 10.1136/bjsports-2017-097608
 
-### 2. The Alpert Limit (Muscle Sparing)
-The safe maximum caloric deficit is constrained by the body's ability to mobilize fat stores, estimated at approximately **69 kcal per kilogram of fat mass per day**. Exceeding this limit results in accelerated lean mass loss.
+## Project structure
 
----
+```text
+main.py              Streamlit interface and charts
+logic.py             Simulation model
+style.css            Responsive styling
+tests/test_logic.py  Deterministic model tests
+```
 
-## 🎨 Tech Stack
-* **Frontend:** [Streamlit](https://streamlit.io/) for the interactive UI.
-* **Visualization:** [Plotly Graph Objects](https://plotly.com/python/) for interactive charts.
-* **Logic:** [NumPy](https://numpy.org/) & [Pandas](https://pandas.pydata.org/) & [SciPy](https://scipy.org/) (for non-linear equation solving).
+## License
 
-## 📄 License
-This project is open-source and available under the [MIT License](LICENSE).
+MIT

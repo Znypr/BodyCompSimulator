@@ -1,82 +1,27 @@
-/* --- GLOBAL SPACING --- */
+/* Lightweight responsive dashboard styling */
 .block-container {
-    padding-top: 3rem !important;
-    padding-bottom: 2rem;
+  max-width: 1500px;
+  padding-top: 2rem;
+  padding-bottom: 3rem;
 }
 
-/* ============================================================
-   DARK MODE TEXT FIX (Overrides all text to White when background is dark)
-   ============================================================ */
-/* Target the app when its background is dark. This has the highest specificity. */
-.stApp[style*="background-color: rgb(14, 17, 23)"] {
-    /* CRITICAL FIX: Forces ALL headings, labels, and paragraph text to white */
-    & h1, & h2, & h3, & p, & label, & span, 
-    & .stMarkdown, & [data-testid="stMetricValue"], & [data-testid="stMetricLabel"] {
-        color: #ffffff !important;
-    }
+.stPlotlyChart {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 16px;
+  padding: 0.35rem;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
 }
 
-/* ============================================================
-   CHART CARDS (Always matches the Left Panel)
-   ============================================================ */
-
-.stPlotlyChart, .stCard {
-    border: none !important;
-    box-shadow: none !important;
+.stAlert {
+  border-radius: 12px;
 }
 
-
-[data-testid="stPlotlyChart"] {
-    /* Uses the Sidebar/Left Panel color which switches automatically with the toggle */
-    background-color: var(--secondary-background-color) !important;
-    
-    border: 1px solid rgba(128, 128, 128, 0.2);
-    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-    border-radius: 8px;
+h1 {
+  letter-spacing: -0.035em;
 }
 
-/* ============================================================
-   LIGHT MODE (Default) INPUT STYLING
-   ============================================================ */
-:root[data-theme="light"] input {
-    background-color: #ffffff !important;
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
-}
-
-:root[data-theme="light"] div[data-baseweb="input"] {
-    background-color: #ffffff !important;
-    border: 1px solid #d6d6d6 !important;
-}
-
-:root[data-theme="light"] .stPlotlyChart > div {
-    background-color: #ffffff !important;
-    border: 1px solid #d6d6d6 !important;
-    border-radius: 8px !important;
-}
-
-/* ============================================================
-   DARK MODE INPUT STYLING (Dark Gray Box / White Text)
-   ============================================================ */
-:root[data-theme="dark"] input,
-:root[data-theme="dark"] textarea,
-:root[data-theme="dark"] select {
-    background-color: #31333f !important;
-    color: #ffffff !important;
-    -webkit-text-fill-color: #ffffff !important;
-}
-
-:root[data-theme="dark"] .stTextInput > div > div,
-:root[data-theme="dark"] .stNumberInput > div > div {
-    background-color: #2a2a2f !important;
-}
-
-:root[data-theme="dark"] ::placeholder {
-    color: #bbbbbb !important;
-}
-
-:root[data-theme="dark"] .stPlotlyChart > div {
-    background-color: #0e1117 !important; /* sidebar bg color */
-    border: 1px solid rgba(128, 128, 128, 0.2) !important;
-    border-radius: 8px !important;
+@media (max-width: 900px) {
+  .block-container {
+    padding-top: 1.2rem;
+  }
 }
