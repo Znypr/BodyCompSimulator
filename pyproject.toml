@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bodycomp-simulator"
+version = "0.2.0"
+description = "Evidence-informed body-composition scenario dashboard"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pandas>=2.2,<3",
+  "plotly>=6,<7",
+  "streamlit>=1.52,<2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[tool.setuptools]
+py-modules = ["bodycomp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
