@@ -1,19 +1,11 @@
-.vscode
-
-venv/
 .venv/
-
 __pycache__/
-*.pyc
-
+.pytest_cache/
+*.py[cod]
 .env
 .env.*
-.secrets
-
-
+.DS_Store
 Thumbs.db
-
-# Python Build Artifacts
-/dist/
-/build/
-*.spec
+build/
+dist/
+*.egg-info/
