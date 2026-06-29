@@ -24,6 +24,9 @@ def make_inputs(
     minimum_phase_weeks,
     finish_lean,
 ):
+    if cycle_strategy != "Body-fat range":
+        bulk_stop_body_fat_pct = 15.0
+        cut_stop_body_fat_pct = 10.0
     return ProjectionInputs(
         float(start_weight),
         float(start_bf),
