@@ -8,19 +8,17 @@ def summarize_phases(dataframe: pd.DataFrame) -> pd.DataFrame:
     df["PhaseGroup"] = (df["Phase"] != df["Phase"].shift()).cumsum()
     rows = []
     for _, group in df.groupby("PhaseGroup", sort=True):
-        start = group.iloc[0]
-        end = group.iloc[-1]
-        risks = set(group["Risk"])
+        start, end = group.iloc[0], group.iloc[-1]
         rows.append({
             "Phase": start["Phase"],
             "Start week": round(float(start["Week"]), 1),
             "End week": round(float(end["Week"]), 1),
-            "End weight (kg)": round(float(end["Weight"]), 2),
-            "End body fat (%)": round(float(end["BodyFat"]), 2),
-            "Weight change (kg)": round(float(end["Weight"] - start["Weight"]), 2),
+            "End scale weight (kg)": round(float(end["Weight"]), 2),
+            "End tissue body fat (%)": round(float(end["BodyFat"]), 2),
+            "Scale change (kg)": round(float(end["Weight"] - start["Weight"]), 2),
             "Fat change (kg)": round(float(end["FatMass"] - start["FatMass"]), 2),
-            "Fat-free change (kg)": round(float(end["LeanMass"] - start["LeanMass"]), 2),
-            "Highest risk": "High" if "High" in risks else "Moderate" if "Moderate" in risks else "Low",
+            "Stable FFM change (kg)": round(float(end["LeanMass"] - start["LeanMass"]), 2),
+            "Transient change (kg)": round(float(end["ScaleTransient"] - start["ScaleTransient"]), 2),
         })
     return pd.DataFrame(rows)
 
