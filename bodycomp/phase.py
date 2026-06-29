@@ -39,6 +39,8 @@ def choose_phase(
             return "Cut"
 
     if state.final_cut_started:
+        if state.phase == "Maintain":
+            return "Maintain"
         if body_fat_pct <= inputs.cut_stop_body_fat_pct and state.days_in_phase >= 7:
             return "Maintain"
         return "Cut"
