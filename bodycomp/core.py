@@ -18,8 +18,6 @@ ACTIVITY_FACTORS = {
     "Very high": 1.90,
 }
 
-# Scenario priors, not biological laws. These represent stable fat-free tissue,
-# not short-term glycogen/water changes.
 MAX_FFM_GAIN_KG_PER_MONTH = {
     "Beginner": (0.35, 0.75),
     "Intermediate": (0.18, 0.45),
@@ -29,6 +27,12 @@ MAX_FFM_GAIN_FRACTION_PER_MONTH = {
     key: high / 75.0 for key, (_, high) in MAX_FFM_GAIN_KG_PER_MONTH.items()
 }
 CYCLE_STRATEGIES = ("Body-fat range", "Fixed duration")
+STARTING_TRANSIENT_STATES = (
+    "Neutral / maintenance",
+    "Full / high-carb",
+    "Already depleted / mid-cut",
+    "Custom",
+)
 
 
 @dataclass(frozen=True)
@@ -56,6 +60,8 @@ class ProjectionInputs:
     finish_lean: bool = False
     cut_gap_multiplier: float = 1.0
     include_scale_transients: bool = True
+    starting_transient_state: str = "Neutral / maintenance"
+    custom_start_transient_kg: float = 0.0
 
 
 def clamp(value: float, lower: float, upper: float) -> float:
@@ -77,6 +83,8 @@ def validate_inputs(inputs: ProjectionInputs) -> None:
         raise ValueError("Start mode must be 'Bulk' or 'Cut'.")
     if inputs.cycle_strategy not in CYCLE_STRATEGIES:
         raise ValueError(f"Unknown cycle strategy: {inputs.cycle_strategy}")
+    if inputs.starting_transient_state not in STARTING_TRANSIENT_STATES:
+        raise ValueError(f"Unknown starting scale state: {inputs.starting_transient_state}")
     if inputs.bulk_weeks <= 0 or inputs.cut_weeks <= 0:
         raise ValueError("Bulk and cut durations must be positive.")
     if inputs.total_weeks <= 0 or inputs.first_phase_weeks <= 0:
@@ -89,6 +97,8 @@ def validate_inputs(inputs: ProjectionInputs) -> None:
         raise ValueError("Surplus and deficit must be non-negative.")
     if not 0.5 <= inputs.cut_gap_multiplier <= 2.5:
         raise ValueError("Cut calibration multiplier must be between 0.5 and 2.5.")
+    if not -5.0 <= inputs.custom_start_transient_kg <= 5.0:
+        raise ValueError("Custom starting scale offset must be between -5 and +5 kg.")
     if inputs.cycle_strategy == "Body-fat range":
         if not 4 <= inputs.cut_stop_body_fat_pct < inputs.bulk_stop_body_fat_pct <= 45:
             raise ValueError("The cut target must be below the bulk ceiling.")
@@ -125,12 +135,6 @@ def cut_ffm_fraction(
     training_quality: float,
     protein_g_per_kg: float,
 ) -> tuple[float, float]:
-    """Fraction of stable tissue loss assigned to fat-free tissue.
-
-    For lean resistance-trained users with adequate protein and moderate loss
-    rates, the central estimate is deliberately low. It increases continuously
-    with leanness, aggressive loss rate, weak training and insufficient protein.
-    """
     weekly_rate = effective_deficit_kcal * 7.0 / (8500.0 * max(weight_kg, 1.0))
     protection = 0.65 * training_quality + 0.35 * min(protein_score(protein_g_per_kg, "Cut"), 1.0)
     leanness = clamp((14.0 - body_fat_pct) / 7.0, 0.0, 1.0)
@@ -151,7 +155,6 @@ def bulk_ffm_gain_cap_kg_per_day(inputs: ProjectionInputs, stable_weight_kg: flo
 
 
 def estimate_cut_transient_target_kg(weight_kg: float, deficit_kcal: float) -> float:
-    """Central short-term scale reduction from glycogen, associated water and gut content."""
     target = 0.015 * weight_kg + 0.0015 * deficit_kcal
     return clamp(target, 0.8, 3.0)
 
@@ -161,19 +164,39 @@ def estimate_bulk_transient_target_kg(weight_kg: float, surplus_kcal: float) -> 
     return clamp(target, 0.4, 1.5)
 
 
+def resolve_starting_transient_kg(inputs: ProjectionInputs) -> float:
+    """Return the scale offset already present at simulation day zero.
+
+    Positive values mean the scale is above the neutral reference state; negative
+    values mean the user is already depleted. The entered start weight remains
+    the actual scale weight in every mode.
+    """
+    if not inputs.include_scale_transients:
+        return 0.0
+    if inputs.starting_transient_state == "Neutral / maintenance":
+        return 0.0
+    if inputs.starting_transient_state == "Custom":
+        return inputs.custom_start_transient_kg
+
+    transient = 0.0
+    for _ in range(2):
+        stable_weight = inputs.start_weight_kg - transient
+        if inputs.starting_transient_state == "Full / high-carb":
+            transient = estimate_bulk_transient_target_kg(stable_weight, inputs.surplus_kcal)
+        else:
+            transient = -estimate_cut_transient_target_kg(
+                stable_weight,
+                inputs.deficit_kcal * inputs.cut_gap_multiplier,
+            )
+    return transient
+
+
 def infer_cut_calibration(
     observed_start_weight_kg: float,
     observed_end_weight_kg: float,
     observed_weeks: float,
     planned_deficit_kcal: float,
 ) -> dict[str, float]:
-    """Infer the effective average deficit from an observed scale trend.
-
-    The estimate removes a central transient scale component before converting
-    remaining loss to energy using 8,500 kcal/kg, appropriate for predominantly
-    fat tissue loss with a small FFM component. It is a calibration estimate,
-    not proof of exact intake or expenditure.
-    """
     if observed_weeks <= 0 or planned_deficit_kcal <= 0:
         raise ValueError("Observed weeks and planned deficit must be positive.")
     scale_loss = observed_start_weight_kg - observed_end_weight_kg
