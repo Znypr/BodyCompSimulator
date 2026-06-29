@@ -31,6 +31,8 @@ def render_results(config):
             cut_stop_body_fat_pct=config["cut_stop_body_fat_pct"],
             minimum_phase_weeks=config["minimum_phase_weeks"],
             finish_lean=config["finish_lean"],
+            cut_gap_multiplier=config["cut_gap_multiplier"],
+            include_scale_transients=config["include_scale_transients"],
         )
     except ValueError as error:
         st.error(str(error))
@@ -39,25 +41,41 @@ def render_results(config):
     df["Month"] = df["Day"] / (365.2425 / 12.0)
     start, final = df.iloc[0], df.iloc[-1]
     st.title("Body Composition Simulator")
-    st.caption("Scenario modelling for body weight, fat mass, fat-free mass and energy expenditure.")
+    st.caption(
+        "Scale weight is separated into stable tissue and short-term glycogen, water and gut-content changes. "
+        "Body-fat percentage refers to stable tissue weight."
+    )
 
-    columns = st.columns(5)
-    columns[0].metric("Final weight", f"{final['Weight']:.1f} kg", f"{final['Weight'] - start['Weight']:+.1f} kg")
-    columns[1].metric("Final body fat", f"{final['BodyFat']:.1f}%", f"{final['BodyFat'] - start['BodyFat']:+.1f} pp", delta_color="inverse")
+    columns = st.columns(6)
+    columns[0].metric("Final scale weight", f"{final['Weight']:.1f} kg", f"{final['Weight'] - start['Weight']:+.1f} kg")
+    columns[1].metric("Tissue body fat", f"{final['BodyFat']:.1f}%", f"{final['BodyFat'] - start['BodyFat']:+.1f} pp", delta_color="inverse")
     columns[2].metric("Fat mass", f"{final['FatMass']:.1f} kg", f"{final['FatMass'] - start['FatMass']:+.1f} kg", delta_color="inverse")
-    columns[3].metric("Fat-free mass", f"{final['LeanMass']:.1f} kg", f"{final['LeanMass'] - start['LeanMass']:+.1f} kg")
-    columns[4].metric("Duration", f"{config['timeline_months']} months")
+    columns[3].metric("Stable fat-free mass", f"{final['LeanMass']:.1f} kg", f"{final['LeanMass'] - start['LeanMass']:+.1f} kg")
+    columns[4].metric("Scale transient", f"{final['ScaleTransient']:+.1f} kg")
+    columns[5].metric("Duration", f"{config['timeline_months']} months")
+
+    calibration = config.get("calibration_summary")
+    if calibration:
+        st.info(
+            f"Your observed trend implies an effective average deficit near "
+            f"{calibration['effective_deficit_kcal']:.0f} kcal/day, not necessarily the recorded "
+            f"{config['deficit']} kcal/day. The model is applying a {config['cut_gap_multiplier']:.2f}× personal cut calibration."
+        )
 
     endpoints = logic.phase_endpoints(df)
     cut_points = endpoints[endpoints["Phase"] == "Cut"]
     if not cut_points.empty:
         last = cut_points.iloc[-1]
-        st.info(f"Latest cut checkpoint: {last['Weight']:.1f} kg, {last['BodyFat']:.1f}% body fat, {last['LeanMass']:.1f} kg fat-free mass.")
+        st.info(
+            f"Latest cut endpoint: {last['Weight']:.1f} kg scale weight, "
+            f"{last['BodyFat']:.1f}% tissue body fat, {last['FatMass']:.1f} kg fat and "
+            f"{last['LeanMass']:.1f} kg stable fat-free mass."
+        )
 
     if final["LeanMass"] <= start["LeanMass"] and final["BodyFat"] >= start["BodyFat"]:
-        st.error("This protocol does not improve projected body composition. Shorten the bulk, reduce the surplus, extend the cut or use body-fat range cycling.")
+        st.error("This protocol does not improve projected body composition. Adjust phase duration, surplus, deficit or training assumptions.")
     elif final["BodyFat"] > start["BodyFat"] and final["Phase"] == "Bulk":
-        st.warning("The timeline ends during a bulk. Compare the latest completed cut checkpoint rather than the arbitrary final day.")
+        st.warning("The timeline ends during a bulk. Compare the latest completed cut endpoint rather than treating the final day as a lean-condition result.")
 
     upper = config["bulk_stop_body_fat_pct"] if config["cycle_strategy"] == "Body-fat range" else None
     lower = config["cut_stop_body_fat_pct"] if config["cycle_strategy"] == "Body-fat range" else None
@@ -69,5 +87,12 @@ def render_results(config):
         st.plotly_chart(tissue_chart(df, "Month"), width="stretch", config={"displayModeBar": False})
         st.dataframe(logic.summarize_phases(df), hide_index=True, width="stretch")
 
-    with st.expander("How to read the result"):
-        st.markdown("Body fat rises during a bulk and falls during a cut. Compare completed cut endpoints. A successful cycle should retain most fat-free mass during the cut and add some during the bulk. A long bulk followed by a short cut can still finish fatter; the model no longer forces every protocol to look successful.")
+    with st.expander("How to interpret the model"):
+        st.markdown(
+            """
+- A 500 kcal/day **true average energy gap** corresponds to roughly 4–5 kg of predominantly fat tissue over 11 weeks, before metabolic adaptation.
+- The first 1–3 kg of scale loss can come from glycogen, associated water and reduced gut content, especially when carbohydrate and total food intake fall.
+- Losing 9 kg in 11 weeks therefore does not demonstrate that 500 kcal/day always causes 9 kg of tissue loss. It usually implies a larger effective deficit, a substantial transient component, or both.
+- Stable fat-free mass is a broader compartment than skeletal muscle. The dashboard no longer counts short-term water loss as muscle loss.
+            """
+        )
