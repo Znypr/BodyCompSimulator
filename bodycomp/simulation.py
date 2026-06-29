@@ -1,0 +1,51 @@
+from .input_factory import make_inputs
+from .runner import run_projection
+
+
+def calculate_projection(
+    start_weight,
+    start_bf,
+    training_quality,
+    base_bulk_weeks,
+    base_cut_weeks,
+    surplus,
+    deficit,
+    total_weeks,
+    scale_coeff,
+    start_mode,
+    first_phase_weeks,
+    training_status="Intermediate",
+    protein_g_per_kg=1.8,
+    activity_level="Moderate",
+    measured_maintenance_kcal=None,
+    fixed_intake=True,
+    cycle_strategy="Fixed duration",
+    bulk_stop_body_fat_pct=15.0,
+    cut_stop_body_fat_pct=10.0,
+    minimum_phase_weeks=4.0,
+    finish_lean=False,
+):
+    inputs = make_inputs(
+        start_weight,
+        start_bf,
+        training_quality,
+        base_bulk_weeks,
+        base_cut_weeks,
+        surplus,
+        deficit,
+        total_weeks,
+        scale_coeff,
+        start_mode,
+        first_phase_weeks,
+        training_status,
+        protein_g_per_kg,
+        activity_level,
+        measured_maintenance_kcal,
+        fixed_intake,
+        cycle_strategy,
+        bulk_stop_body_fat_pct,
+        cut_stop_body_fat_pct,
+        minimum_phase_weeks,
+        finish_lean,
+    )
+    return run_projection(inputs)
