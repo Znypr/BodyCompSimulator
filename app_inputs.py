@@ -59,12 +59,53 @@ def render_inputs():
                 f"{calibration_summary['transient_loss_kg']:.1f} kg short-term scale component."
             )
 
-    with st.expander("Advanced model options", expanded=False):
+    starting_transient_state = "Neutral / maintenance"
+    custom_start_transient_kg = 0.0
+    with st.expander("Water and glycogen state", expanded=True):
         include_scale_transients = st.toggle(
             "Model glycogen, water and gut-content shifts",
             True,
-            help="Separates short-term scale changes from stable fat and fat-free tissue.",
+            help="Turn this off to model only stable tissue change. Scale weight will then exclude phase-related transient shifts.",
         )
+        if include_scale_transients:
+            starting_transient_state = st.selectbox(
+                "Starting scale state",
+                logic.STARTING_TRANSIENT_STATES,
+                index=0,
+                help=(
+                    "Choose whether the entered start weight is neutral, unusually full, or already diet-depleted. "
+                    "This prevents the model from applying the initial water/glycogen drop twice when starting mid-cut."
+                ),
+            )
+            if starting_transient_state == "Custom":
+                custom_start_transient_kg = st.number_input(
+                    "Starting scale offset versus neutral (kg)",
+                    min_value=-5.0,
+                    max_value=5.0,
+                    value=0.0,
+                    step=0.1,
+                    help="Negative means already lighter from depletion; positive means fuller than neutral.",
+                )
+
+            state_help = {
+                "Neutral / maintenance": (
+                    "Use when starting around normal maintenance intake and typical carbohydrate, sodium and food volume. "
+                    "A new cut may then include an early transient scale drop."
+                ),
+                "Full / high-carb": (
+                    "Use after a bulk, refeed or unusually high-carbohydrate period. The model can show a larger early cut drop."
+                ),
+                "Already depleted / mid-cut": (
+                    "Use when the early water, glycogen and gut-content drop has already happened. "
+                    "The current cut will not apply that loss again."
+                ),
+                "Custom": (
+                    "Use a measured or manually estimated offset relative to your normal neutral scale state."
+                ),
+            }
+            st.caption(state_help[starting_transient_state])
+        else:
+            st.caption("Only stable fat and fat-free tissue changes will affect scale weight.")
 
     return {
         "start_weight": weight,
@@ -92,4 +133,6 @@ def render_inputs():
         "cut_gap_multiplier": cut_gap_multiplier,
         "calibration_summary": calibration_summary,
         "include_scale_transients": include_scale_transients,
+        "starting_transient_state": starting_transient_state,
+        "custom_start_transient_kg": custom_start_transient_kg,
     }
