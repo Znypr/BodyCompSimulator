@@ -18,6 +18,7 @@ from .core import (
     estimate_bulk_transient_target_kg,
     estimate_cut_transient_target_kg,
     estimate_maintenance_kcal,
+    resolve_starting_transient_kg,
     validate_inputs,
 )
 
@@ -82,6 +83,8 @@ def calculate_projection(
     finish_lean=False,
     cut_gap_multiplier=1.0,
     include_scale_transients=True,
+    starting_transient_state="Neutral / maintenance",
+    custom_start_transient_kg=0.0,
 ):
     inputs = ProjectionInputs(
         float(start_weight), float(start_bf), float(training_quality), training_status,
@@ -92,19 +95,33 @@ def calculate_projection(
         bool(fixed_intake), cycle_strategy, float(bulk_stop_body_fat_pct),
         float(cut_stop_body_fat_pct), float(minimum_phase_weeks), bool(finish_lean),
         float(cut_gap_multiplier), bool(include_scale_transients),
+        starting_transient_state, float(custom_start_transient_kg),
     )
     validate_inputs(inputs)
 
     total_days = max(1, round(inputs.total_weeks * 7))
     fixed_phases = None
     if inputs.cycle_strategy == "Fixed duration":
-        fixed_phases = build_fixed_phases(total_days, inputs.start_mode, inputs.first_phase_weeks, inputs.bulk_weeks, inputs.cut_weeks, inputs.cycle_scale)
+        fixed_phases = build_fixed_phases(
+            total_days,
+            inputs.start_mode,
+            inputs.first_phase_weeks,
+            inputs.bulk_weeks,
+            inputs.cut_weeks,
+            inputs.cycle_scale,
+        )
 
-    fat = inputs.start_weight_kg * inputs.start_body_fat_pct / 100.0
-    lean = inputs.start_weight_kg - fat
-    transient = 0.0
+    transient = resolve_starting_transient_kg(inputs)
+    starting_stable_weight = inputs.start_weight_kg - transient
+    fat = starting_stable_weight * inputs.start_body_fat_pct / 100.0
+    lean = starting_stable_weight - fat
+
     initial_rmr = cunningham_rmr_kcal(lean)
-    estimated_maintenance = estimate_maintenance_kcal(inputs.start_weight_kg, inputs.start_body_fat_pct, inputs.activity_level)
+    estimated_maintenance = estimate_maintenance_kcal(
+        starting_stable_weight,
+        inputs.start_body_fat_pct,
+        inputs.activity_level,
+    )
     baseline_maintenance = inputs.measured_maintenance_kcal or estimated_maintenance
     if baseline_maintenance < initial_rmr:
         raise ValueError("Maintenance calories cannot be below estimated resting needs.")
@@ -131,6 +148,7 @@ def calculate_projection(
             "LeanMass": lean,
             "FatMass": fat,
             "ScaleTransient": transient,
+            "StartingTransientState": inputs.starting_transient_state,
             "Phase": phase,
             "PhaseDay": days_in_phase,
             "Intake": intake,
@@ -173,7 +191,7 @@ def calculate_projection(
             days_in_phase = 0
 
         rmr = cunningham_rmr_kcal(lean)
-        movement = baseline_non_rmr * (stable_weight / inputs.start_weight_kg)
+        movement = baseline_non_rmr * (stable_weight / starting_stable_weight)
         tdee_before_adaptation = rmr + movement
         current_tdee = tdee_before_adaptation + adaptation
         requested = _requested_balance(inputs, phase)
@@ -182,7 +200,13 @@ def calculate_projection(
             phase_intake = current_tdee + requested
         intake = phase_intake if inputs.fixed_intake else current_tdee + requested
 
-        adaptation_fraction = BULK_ADAPTATION_FRACTION if phase == "Bulk" else CUT_ADAPTATION_FRACTION if phase == "Cut" else 0.0
+        adaptation_fraction = (
+            BULK_ADAPTATION_FRACTION
+            if phase == "Bulk"
+            else CUT_ADAPTATION_FRACTION
+            if phase == "Cut"
+            else 0.0
+        )
         target_adaptation = adaptation_fraction * (intake - baseline_maintenance)
         adaptation += (target_adaptation - adaptation) / ADAPTATION_TIME_CONSTANT_DAYS
         tdee = tdee_before_adaptation + adaptation
@@ -191,8 +215,17 @@ def calculate_projection(
         ffm_fraction = 0.0
         weekly_rate = 0.0
         if balance < -1e-9:
-            ffm_fraction, weekly_rate = cut_ffm_fraction(tissue_bf, stable_weight, abs(balance), inputs.training_quality, inputs.protein_g_per_kg)
-            density = ffm_fraction * KCAL_PER_KG_FFM_CHANGE + (1.0 - ffm_fraction) * KCAL_PER_KG_FAT_CHANGE
+            ffm_fraction, weekly_rate = cut_ffm_fraction(
+                tissue_bf,
+                stable_weight,
+                abs(balance),
+                inputs.training_quality,
+                inputs.protein_g_per_kg,
+            )
+            density = (
+                ffm_fraction * KCAL_PER_KG_FFM_CHANGE
+                + (1.0 - ffm_fraction) * KCAL_PER_KG_FAT_CHANGE
+            )
             delta_weight = balance / density
             lean += ffm_fraction * delta_weight
             fat += (1.0 - ffm_fraction) * delta_weight
@@ -201,7 +234,11 @@ def calculate_projection(
             potential_lean = min(cap, balance * 0.45 / KCAL_PER_KG_FFM_CHANGE)
             lean_energy = potential_lean * KCAL_PER_KG_FFM_CHANGE
             residual = max(0.0, balance - lean_energy)
-            storage_efficiency = clamp(0.55 + 0.20 * (inputs.surplus_kcal / 500.0), 0.50, 0.78)
+            storage_efficiency = clamp(
+                0.55 + 0.20 * (inputs.surplus_kcal / 500.0),
+                0.50,
+                0.78,
+            )
             fat_gain = residual * storage_efficiency / KCAL_PER_KG_FAT_CHANGE
             lean += potential_lean
             fat += fat_gain
