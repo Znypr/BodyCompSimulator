@@ -40,6 +40,14 @@ def _requested_balance(inputs: ProjectionInputs, phase: str) -> float:
     return 0.0
 
 
+def _estimated_cut_days(inputs: ProjectionInputs, lean: float, fat: float) -> int:
+    target = inputs.cut_stop_body_fat_pct / 100.0
+    target_fat = target * lean / max(1.0 - target, 0.01)
+    fat_to_lose = max(0.0, fat - target_fat)
+    effective_gap = max(inputs.deficit_kcal * inputs.cut_gap_multiplier * 0.85, 1.0)
+    return max(7, round(fat_to_lose * KCAL_PER_KG_FAT_CHANGE / effective_gap))
+
+
 def _body_fat_phase_switch(inputs: ProjectionInputs, phase: str, body_fat_pct: float, days_in_phase: int) -> str:
     if inputs.cycle_strategy != "Body-fat range" or days_in_phase < round(inputs.minimum_phase_weeks * 7):
         return phase
@@ -107,6 +115,7 @@ def calculate_projection(
     previous_phase = phase
     days_in_phase = 0
     cumulative_bulk_days = 0
+    final_cut_started = False
     phase_intake = baseline_maintenance + _requested_balance(inputs, phase)
     rows = []
 
@@ -132,7 +141,7 @@ def calculate_projection(
             "PRatio": ffm_fraction,
             "WeeklyWeightRate": weekly_rate,
             "Risk": "High" if weekly_rate > 0.012 else "Moderate" if weekly_rate > 0.008 else "Low",
-            "FinalCut": False,
+            "FinalCut": final_cut_started,
         })
 
     add_row(0, baseline_maintenance, baseline_maintenance, 0.0, 0.0, 0.0)
@@ -144,7 +153,20 @@ def calculate_projection(
         if fixed_phases is not None:
             phase = fixed_phases[day - 1]
         else:
-            phase = _body_fat_phase_switch(inputs, phase, tissue_bf, days_in_phase)
+            remaining_days = total_days - day + 1
+            if inputs.finish_lean and not final_cut_started:
+                if remaining_days <= _estimated_cut_days(inputs, lean, fat) + 7:
+                    phase = "Cut"
+                    final_cut_started = True
+            if final_cut_started:
+                if phase == "Maintain":
+                    phase = "Maintain"
+                elif tissue_bf <= inputs.cut_stop_body_fat_pct and days_in_phase >= 7:
+                    phase = "Maintain"
+                else:
+                    phase = "Cut"
+            else:
+                phase = _body_fat_phase_switch(inputs, phase, tissue_bf, days_in_phase)
 
         changed = phase != previous_phase
         if changed:
@@ -156,9 +178,6 @@ def calculate_projection(
         current_tdee = tdee_before_adaptation + adaptation
         requested = _requested_balance(inputs, phase)
 
-        # Fixed intake means calories are set at the phase start and then left
-        # unchanged. Otherwise they are adjusted daily to preserve the requested
-        # effective energy gap.
         if changed or day == 1:
             phase_intake = current_tdee + requested
         intake = phase_intake if inputs.fixed_intake else current_tdee + requested
