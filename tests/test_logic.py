@@ -141,3 +141,53 @@ def test_phase_summary_reports_transient_separately():
     summary = logic.summarize_phases(project())
     assert "Stable FFM change (kg)" in summary.columns
     assert "Transient change (kg)" in summary.columns
+
+
+def test_five_month_500_kcal_gap_projects_about_ten_kg_scale_loss():
+    weeks = 5.0 * 365.2425 / 12.0 / 7.0
+    df = project(
+        start_bf=18.0,
+        total_weeks=weeks,
+        first_phase_weeks=weeks,
+        fixed_intake=False,
+        include_scale_transients=True,
+        starting_transient_state="Neutral / maintenance",
+        activity_level="Moderate",
+    )
+    cut_rows = df[(df["Phase"] == "Cut") & (df["Day"] > 0)]
+    scale_loss = df.iloc[0]["Weight"] - df.iloc[-1]["Weight"]
+    tissue_loss = df.iloc[0]["TissueWeight"] - df.iloc[-1]["TissueWeight"]
+    average_gap = -cut_rows["EnergyBalance"].mean()
+
+    assert 9.5 <= scale_loss <= 10.7
+    assert 7.8 <= tissue_loss <= 8.7
+    assert 495 <= average_gap <= 505
+
+
+def test_fixed_calorie_mode_shrinks_the_cut_gap_over_time():
+    weeks = 5.0 * 365.2425 / 12.0 / 7.0
+    fixed = project(
+        start_bf=18.0,
+        total_weeks=weeks,
+        first_phase_weeks=weeks,
+        fixed_intake=True,
+        include_scale_transients=False,
+        activity_level="Moderate",
+    )
+    maintained = project(
+        start_bf=18.0,
+        total_weeks=weeks,
+        first_phase_weeks=weeks,
+        fixed_intake=False,
+        include_scale_transients=False,
+        activity_level="Moderate",
+    )
+    cut_rows = fixed[(fixed["Phase"] == "Cut") & (fixed["Day"] > 0)]
+    first_gap = -cut_rows.iloc[0]["EnergyBalance"]
+    final_gap = -cut_rows.iloc[-1]["EnergyBalance"]
+    fixed_loss = fixed.iloc[0]["Weight"] - fixed.iloc[-1]["Weight"]
+    maintained_loss = maintained.iloc[0]["Weight"] - maintained.iloc[-1]["Weight"]
+
+    assert 490 <= first_gap <= 505
+    assert final_gap < 400
+    assert fixed_loss < maintained_loss - 1.0

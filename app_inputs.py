@@ -24,12 +24,31 @@ def render_inputs():
             first_weeks, bulk_weeks, cut_weeks = render_duration_protocol()
         a, b = st.columns(2)
         surplus = a.number_input("Bulk intake above maintenance (kcal/day)", 0, 1500, 200, 25)
-        deficit = b.number_input("Planned cut deficit (kcal/day)", 0, 1500, 500, 25)
-        fixed = st.toggle(
-            "Keep calories fixed within each phase",
-            True,
-            help="On: calories stay fixed after each phase begins. Off: intake is adjusted daily to preserve the selected effective energy gap.",
+        deficit = b.number_input(
+            "Target cut energy gap (kcal/day)",
+            0,
+            1500,
+            500,
+            25,
+            help="This is maintained when energy-gap mode is on. With fixed calories, it is only the day-one gap.",
         )
+        maintain_gap = st.toggle(
+            "Maintain selected energy gap",
+            True,
+            help=(
+                "On: calorie intake is adjusted as expenditure changes, keeping the selected surplus or deficit effective. "
+                "Off: calorie intake is held fixed after each phase begins, so the energy gap shrinks or grows as TDEE changes."
+            ),
+        )
+        fixed = not maintain_gap
+        if maintain_gap:
+            st.caption(
+                f"The model adjusts intake over time to keep the cut gap near {deficit} kcal/day."
+            )
+        else:
+            st.caption(
+                f"The {deficit} kcal/day cut gap applies at phase start; it will usually shrink as body weight and expenditure fall."
+            )
 
     cut_gap_multiplier = 1.0
     calibration_summary = None

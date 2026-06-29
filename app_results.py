@@ -72,6 +72,32 @@ def render_results(config):
             f"{config['deficit']} kcal/day. The model is applying a {config['cut_gap_multiplier']:.2f}× personal cut calibration."
         )
 
+    cut_rows = df[(df["Phase"] == "Cut") & (df["Day"] > 0)]
+    if not cut_rows.empty:
+        requested_gap = config["deficit"] * config["cut_gap_multiplier"]
+        first_gap = max(0.0, -float(cut_rows.iloc[0]["EnergyBalance"]))
+        final_gap = max(0.0, -float(cut_rows.iloc[-1]["EnergyBalance"]))
+        average_gap = max(0.0, -float(cut_rows["EnergyBalance"].mean()))
+        cut_days = len(cut_rows)
+        static_benchmark = requested_gap * cut_days / 7700.0
+
+        if config["fixed_intake"]:
+            st.warning(
+                f"Fixed-calorie mode: the entered {requested_gap:.0f} kcal/day gap is only the phase-start gap. "
+                f"Across cut days, the modeled gap averages {average_gap:.0f} kcal/day and ends near {final_gap:.0f} kcal/day "
+                f"as expenditure falls."
+            )
+        else:
+            st.info(
+                f"Maintained-gap mode: the selected {requested_gap:.0f} kcal/day cut gap remains effective "
+                f"(modeled average {average_gap:.0f} kcal/day; first day {first_gap:.0f}, final cut day {final_gap:.0f})."
+            )
+
+        st.caption(
+            f"Static 7,700 kcal/kg arithmetic benchmark: {static_benchmark:.1f} kg over {cut_days} cut days. "
+            "This is a comparison only; the physiological projection separately models fat, fat-free tissue and optional transient scale mass."
+        )
+
     endpoints = logic.phase_endpoints(df)
     cut_points = endpoints[endpoints["Phase"] == "Cut"]
     if not cut_points.empty:
@@ -100,6 +126,8 @@ def render_results(config):
     with st.expander("How to interpret the model"):
         st.markdown(
             """
+- **Maintain selected energy gap** means calorie intake changes as TDEE changes; a 500 kcal/day deficit remains close to 500 kcal/day.
+- Fixed-calorie mode holds intake constant; the initial deficit normally shrinks as body mass and expenditure fall.
 - Use **Neutral / maintenance** when beginning from ordinary carbohydrate, sodium and food intake.
 - Use **Full / high-carb** after a bulk, refeed or unusually high-carbohydrate period.
 - Use **Already depleted / mid-cut** when the early water, glycogen and gut-content reduction has already happened. The model will not subtract it again.
