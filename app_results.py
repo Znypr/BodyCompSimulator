@@ -33,6 +33,8 @@ def render_results(config):
             finish_lean=config["finish_lean"],
             cut_gap_multiplier=config["cut_gap_multiplier"],
             include_scale_transients=config["include_scale_transients"],
+            starting_transient_state=config["starting_transient_state"],
+            custom_start_transient_kg=config["custom_start_transient_kg"],
         )
     except ValueError as error:
         st.error(str(error))
@@ -53,6 +55,14 @@ def render_results(config):
     columns[3].metric("Stable fat-free mass", f"{final['LeanMass']:.1f} kg", f"{final['LeanMass'] - start['LeanMass']:+.1f} kg")
     columns[4].metric("Scale transient", f"{final['ScaleTransient']:+.1f} kg")
     columns[5].metric("Duration", f"{config['timeline_months']} months")
+
+    if config["include_scale_transients"]:
+        st.caption(
+            f"Starting scale state: **{config['starting_transient_state']}**. "
+            f"Day-zero transient offset: **{start['ScaleTransient']:+.1f} kg**."
+        )
+    else:
+        st.caption("Water, glycogen and gut-content shifts are disabled; scale weight reflects stable tissue only.")
 
     calibration = config.get("calibration_summary")
     if calibration:
@@ -90,9 +100,10 @@ def render_results(config):
     with st.expander("How to interpret the model"):
         st.markdown(
             """
-- A 500 kcal/day **true average energy gap** corresponds to roughly 4–5 kg of predominantly fat tissue over 11 weeks, before metabolic adaptation.
-- The first 1–3 kg of scale loss can come from glycogen, associated water and reduced gut content, especially when carbohydrate and total food intake fall.
-- Losing 9 kg in 11 weeks therefore does not demonstrate that 500 kcal/day always causes 9 kg of tissue loss. It usually implies a larger effective deficit, a substantial transient component, or both.
-- Stable fat-free mass is a broader compartment than skeletal muscle. The dashboard no longer counts short-term water loss as muscle loss.
+- Use **Neutral / maintenance** when beginning from ordinary carbohydrate, sodium and food intake.
+- Use **Full / high-carb** after a bulk, refeed or unusually high-carbohydrate period.
+- Use **Already depleted / mid-cut** when the early water, glycogen and gut-content reduction has already happened. The model will not subtract it again.
+- Turn transient modelling off when you only want stable tissue change.
+- Stable fat-free mass is broader than skeletal muscle and still should not be interpreted as an exact muscle measurement.
             """
         )
