@@ -26,19 +26,21 @@ def project(**overrides):
         finish_lean=False,
         cut_gap_multiplier=1.0,
         include_scale_transients=True,
+        starting_transient_state="Neutral / maintenance",
+        custom_start_transient_kg=0.0,
     )
     values.update(overrides)
     return logic.calculate_projection(**values)
 
 
-def test_baseline_matches_inputs():
+def test_baseline_matches_entered_scale_weight():
     first = project().iloc[0]
     assert first["Weight"] == pytest.approx(83.0)
     assert first["BodyFat"] == pytest.approx(20.0)
     assert first["ScaleTransient"] == 0.0
 
 
-def test_true_500_deficit_includes_tissue_and_transient_loss():
+def test_neutral_start_includes_initial_cut_transient():
     df = project()
     loss = df.iloc[0]["Weight"] - df.iloc[-1]["Weight"]
     fat_loss = df.iloc[0]["FatMass"] - df.iloc[-1]["FatMass"]
@@ -47,6 +49,45 @@ def test_true_500_deficit_includes_tissue_and_transient_loss():
     assert 3.5 <= fat_loss <= 5.5
     assert 0.0 <= ffm_loss <= 0.7
     assert df.iloc[-1]["ScaleTransient"] < -1.0
+
+
+def test_mid_cut_start_does_not_apply_water_loss_twice():
+    df = project(
+        start_weight=74.0,
+        start_bf=12.0,
+        total_weeks=30.0 / 7.0,
+        first_phase_weeks=30.0 / 7.0,
+        starting_transient_state="Already depleted / mid-cut",
+    )
+    scale_loss = df.iloc[0]["Weight"] - df.iloc[-1]["Weight"]
+    transient_change = df.iloc[-1]["ScaleTransient"] - df.iloc[0]["ScaleTransient"]
+    assert 1.2 <= scale_loss <= 2.2
+    assert abs(transient_change) < 0.15
+
+
+def test_neutral_start_loses_more_scale_than_mid_cut_start():
+    common = dict(
+        start_weight=74.0,
+        start_bf=12.0,
+        total_weeks=30.0 / 7.0,
+        first_phase_weeks=30.0 / 7.0,
+    )
+    neutral = project(starting_transient_state="Neutral / maintenance", **common)
+    depleted = project(starting_transient_state="Already depleted / mid-cut", **common)
+    neutral_loss = neutral.iloc[0]["Weight"] - neutral.iloc[-1]["Weight"]
+    depleted_loss = depleted.iloc[0]["Weight"] - depleted.iloc[-1]["Weight"]
+    assert neutral_loss > depleted_loss + 1.0
+
+
+def test_custom_starting_offset_preserves_entered_scale_weight():
+    first = project(
+        start_weight=74.0,
+        starting_transient_state="Custom",
+        custom_start_transient_kg=-1.4,
+    ).iloc[0]
+    assert first["Weight"] == pytest.approx(74.0)
+    assert first["ScaleTransient"] == pytest.approx(-1.4)
+    assert first["TissueWeight"] == pytest.approx(75.4)
 
 
 def test_observed_cut_calibration_matches_83_to_74_trend():
@@ -82,10 +123,18 @@ def test_hypertrophy_cycle_is_not_forced_into_six_kg_fat_gain():
     assert -0.5 <= fat_change <= 2.0
 
 
-def test_without_transients_500_deficit_shows_tissue_loss_only():
-    df = project(include_scale_transients=False)
+def test_disabling_transients_shows_tissue_loss_only():
+    df = project(
+        start_weight=74.0,
+        start_bf=12.0,
+        total_weeks=30.0 / 7.0,
+        first_phase_weeks=30.0 / 7.0,
+        include_scale_transients=False,
+        starting_transient_state="Already depleted / mid-cut",
+    )
+    assert df.iloc[0]["ScaleTransient"] == pytest.approx(0.0)
     assert df.iloc[-1]["ScaleTransient"] == pytest.approx(0.0)
-    assert 3.5 <= df.iloc[0]["Weight"] - df.iloc[-1]["Weight"] <= 5.5
+    assert 1.2 <= df.iloc[0]["Weight"] - df.iloc[-1]["Weight"] <= 2.2
 
 
 def test_phase_summary_reports_transient_separately():
